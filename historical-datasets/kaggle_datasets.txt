@@ -1,0 +1,21 @@
+1) hh.ru - https://www.kaggle.com/datasets?search=hh.ru
+
+47330 unique IT vacancies from HH.ru (from 2021-10-25 to 2021-12-02) - https://www.kaggle.com/datasets/vyacheslavpanteleev1/hhru-it-vacancies-from-20211025-to-20211202
+Vacancies Scrapped from HH.ru - https://www.kaggle.com/datasets/pavfedotov/heaadhunter-vacancies
+DS vacancies from hh.ru - https://www.kaggle.com/datasets/vagascience/ds-vacancies-from-hh-ru
+Raw Jobs Data from Head Hunters Russia - https://www.kaggle.com/datasets/etietopabraham/jobs-raw-data
+Open Vacancies Dataset(Moscow) May 2024 - https://www.kaggle.com/datasets/tanelid/open-vacancies-datasetmoscow-may-2024
+Data analyst vacancies on HeadHunter for 2023-2024 - https://www.kaggle.com/datasets/lludop/data-nalyst-vacancies-on-headhunter-for-2023-2024
+
+
+2) Russian jobs - https://www.kaggle.com/datasets?search=russian+jobs
+
+HeadHunter vacancies - https://www.kaggle.com/datasets/antonbelyaevd/headhunter-vacancies-for-data-search/data
+Yandex Jobs - https://www.kaggle.com/datasets/kirili4ik/yandex-jobs
+IT Vacancies from HeadHunter Website - https://www.kaggle.com/datasets/ilyazawilsiv/it-vacancies-from-headhunter-website
+HH.ru IT vacancies (IT вакансии Москва + Питер) - https://www.kaggle.com/datasets/vyacheslavpanteleev1/hhru-it-vacancies-from-20211025-to-20211202
+
+
+3) Job market russia - https://www.kaggle.com/datasets?search=job+market+russia
+
+Job Posting Data in Russia - https://www.kaggle.com/datasets/techsalerator/job-posting-data-in-russia
