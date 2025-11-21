@@ -2,6 +2,7 @@
 data/*
 !data/README.md
 .DS_Store
+airflow/logs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
