@@ -33,6 +33,7 @@ async def get_found(session, date_from, date_to):
         "HH-User-Agent": USER_AGENT
     }
     async with session.get(API_URL, params=params, headers=headers) as r:
+        print('get_found', r.status, r.reason)
         data = await r.json()
         return int(data.get("found", 0))
 
@@ -47,6 +48,7 @@ async def fetch_page(session, date_from, date_to, page):
         "HH-User-Agent": USER_AGENT
     }
     async with session.get(API_URL, params=params, headers=headers) as r:
+        print('fetch_page', r.status, r.reason)
         data = await r.json()
         return data.get("items", [])
 
@@ -62,6 +64,7 @@ async def fetch_vacancies_async(session, date_from, date_to, semaphore, log):
     }
     # Получаем total_pages и found
     async with session.get(API_URL, params=params, headers=headers) as r:
+        print('fetch_vacancies_async', r.status, r.reason)
         main_data = await r.json()
         total_pages = main_data.get("pages", 1)
         found = main_data.get("found", 0)
@@ -145,9 +148,9 @@ async def main_async(input_start, input_end, outfile="vacancies_raw.jsonl", max_
 # Пример запуска
 if __name__ == "__main__":
     # Пример: сутки с 2025-11-25T00:00:00+0300 по 2025-11-26T00:00:00+0300
-    # input_start = "2025-11-25T00:00:00+0300"
-    # input_end = "2025-11-26T00:00:00+0300"
+    input_start = "2025-11-25T09:00:00+0300"
+    input_end = "2025-11-25T10:00:00+0300"
 
-    input_start = "2025-11-25T10:00:00+0300"
-    input_end = "2025-11-25T12:00:00+0300"
+    # input_start = "2025-11-25T18:00:00+0300"
+    # input_end = "2025-11-25T21:00:00+0300"
     asyncio.run(main_async(input_start, input_end, outfile="vacancies_raw.jsonl", max_concurrent=7))

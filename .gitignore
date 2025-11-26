@@ -1,8 +1,12 @@
 # Skill-lense .gitignore
 data/*
+*.jsonl
 !data/README.md
 .DS_Store
+# airflow
 airflow/logs
+
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
