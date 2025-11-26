@@ -8,7 +8,7 @@ API_URL = "https://api.hh.ru/vacancies"
 MIN_INTERVAL = timedelta(minutes=5)
 MAX_INTERVAL = timedelta(days=30)
 PER_PAGE = 100
-MAX_CONCURRENT_REQUESTS = 7  # Лимит асинхронных запросов
+MAX_CONCURRENT_REQUESTS = 1#7  # Лимит асинхронных запросов
 
 USER_AGENT = "Skill Lens/1.0 (loveyousomuch554@gmail.com)"
 
@@ -153,4 +153,4 @@ if __name__ == "__main__":
 
     # input_start = "2025-11-25T18:00:00+0300"
     # input_end = "2025-11-25T21:00:00+0300"
-    asyncio.run(main_async(input_start, input_end, outfile="vacancies_raw.jsonl", max_concurrent=7))
+    asyncio.run(main_async(input_start, input_end, outfile="vacancies_raw.jsonl", max_concurrent=MAX_CONCURRENT_REQUESTS))
