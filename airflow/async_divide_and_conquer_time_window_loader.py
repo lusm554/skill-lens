@@ -119,17 +119,22 @@ async def recursive_fetch_async(session, date_from, date_to, limiter, results_ra
     if interval < MIN_INTERVAL:
         log.append(f"interval < MIN_INTERVAL: {to_str(date_from)}-{to_str(date_to)} skipped")
         return
+
     found, status = await get_found(session, date_from, date_to, limiter, log)
     log.append(f"recursive_fetch_async: {to_str(date_from)}-{to_str(date_to)}: found={found} status={status}")
     print(f"recursive_fetch_async: {to_str(date_from)}-{to_str(date_to)}: found={found} status={status}")
-    if status != 200:
+
+    # ОБРАБОТКА ЛЮБЫХ ОШИБОК!
+    if status != 200 or status is None:
         log.append(f"FAILED WINDOW: {to_str(date_from)}-{to_str(date_to)} status={status}")
         failed_windows.append({
             "date_from": to_str(date_from),
             "date_to": to_str(date_to),
-            "status": status
+            "status": status or -1
         })
-        return
+        return  # Не дробить дальше при ошибке!
+
+    # Дальше — только при found корректном!
     if found > 2000:
         overlap = timedelta(minutes=overlap_minutes)
         mid = date_from + (date_to - date_from) / 2
@@ -139,7 +144,7 @@ async def recursive_fetch_async(session, date_from, date_to, limiter, results_ra
         await recursive_fetch_async(session, right_start, date_to, limiter, results_raw, log, failed_windows, overlap_minutes)
     elif found > 0:
         res, status_vac = await fetch_vacancies_async(session, date_from, date_to, limiter, log)
-        print('fetch_vacancies_async', status_vac)
+        print('fetch_vacancies_async', status_vac, f"{to_str(date_from)}-{to_str(date_to)}")
         if status_vac != 200:
             log.append(f"FAILED WINDOW fetch: {to_str(date_from)}-{to_str(date_to)} status={status_vac}")
             failed_windows.append({
@@ -147,6 +152,7 @@ async def recursive_fetch_async(session, date_from, date_to, limiter, results_ra
                 "date_to": to_str(date_to),
                 "status": status_vac
             })
+            return  # ОБЯЗАТЕЛЬНО выйти!
         else:
             results_raw.extend(res)
 
