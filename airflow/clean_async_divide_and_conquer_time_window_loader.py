@@ -44,6 +44,9 @@ async def rate_limited_get(
                         log.append(
                             f"ERROR: status={status}, params={params}, url={url}, attempt={attempt + 1}, delay={delay}s"
                         )
+                        print(
+                            f"ERROR: status={status}, params={params}, url={url}, attempt={attempt + 1}, delay={delay}s"
+                        )
                         if status in [429, 403]:
                             await asyncio.sleep(delay)
                             delay *= BACKOFF_COEFF
@@ -51,6 +54,9 @@ async def rate_limited_get(
                             break
             except Exception as ex:
                 log.append(
+                    f"EXCEPTION: {ex}, params={params}, url={url}, attempt={attempt + 1}, delay={delay}s"
+                )
+                print(
                     f"EXCEPTION: {ex}, params={params}, url={url}, attempt={attempt + 1}, delay={delay}s"
                 )
                 await asyncio.sleep(delay)
@@ -100,6 +106,99 @@ async def recursive_fetch_async(
     print(
         f"recursive_fetch_async: {to_str(date_from)}-{to_str(date_to)}: found={found} status={status}"
     )
+
+    # ОБРАБОТКА ЛЮБЫХ ОШИБОК!
+    if status != 200 or status is None:
+        log.append(
+            f"FAILED WINDOW: {to_str(date_from)}-{to_str(date_to)} status={status}"
+        )
+        print(f"FAILED WINDOW: {to_str(date_from)}-{to_str(date_to)} status={status}")
+        failed_windows.append(
+            {
+                "date_from": to_str(date_from),
+                "date_to": to_str(date_to),
+                "status": status or -1,
+            }
+        )
+        return  # Не дробить дальше при ошибке!
+
+    # Дальше — только при found корректном!
+    if found > 2000:
+        interval = date_to - date_from
+        print(f"{interval=}")
+        half = interval / 2
+        print(f"{half=}")
+        raw_overlap = timedelta(minutes=overlap_minutes)
+        print(f"{raw_overlap=}")
+        # ensure overlap does not cancel out the split; otherwise we recurse forever
+        effective_overlap = min(raw_overlap, half / 2)
+        mid = date_from + half
+        print(f"{effective_overlap=}, {to_str(mid)=}")
+        left_end = mid + effective_overlap
+        right_start = mid - effective_overlap
+        print(f"{to_str(left_end)=}, {to_str(right_start)=}")
+        # safety: guarantee progress even if overlap is bigger than remaining span
+        if left_end >= date_to:
+            left_end = mid
+        if right_start <= date_from:
+            right_start = mid
+        print(f"{to_str(left_end)=}, {to_str(right_start)=}")
+        print(f"first call: {to_str(date_from)=} - {to_str(left_end)=}")
+        print(f"second call: {to_str(right_start)=} - {to_str(date_to)=}")
+        print(
+            f"first await recursive_fetch_async(\n\t{session=}\n\t{to_str(date_from)=}\n\t{to_str(left_end)=}\n\t{limiter=}\n\t{overlap_minutes=}\n)"
+        )
+        print(
+            f"second await recursive_fetch_async(\n\t{session=}\n\t{to_str(right_start)=}\n\t{to_str(date_to)=}\n\t{limiter=}\n\t{overlap_minutes=}\n)"
+        )
+        print("\n**************\n")
+        import time
+
+        time.sleep(1)
+        await recursive_fetch_async(
+            session,
+            date_from,
+            left_end,
+            limiter,
+            results_raw,
+            log,
+            failed_windows,
+            overlap_minutes,
+        )
+        await recursive_fetch_async(
+            session,
+            right_start,
+            date_to,
+            limiter,
+            results_raw,
+            log,
+            failed_windows,
+            overlap_minutes,
+        )
+    elif found > 0:
+        print(f"fetch_vacancies_async({to_str(date_from)=}, {to_str(date_to)=})")
+        # res, status_vac = await fetch_vacancies_async(
+        #     session, date_from, date_to, limiter, log
+        # )
+        # print(
+        #     "fetch_vacancies_async",
+        #     status_vac,
+        #     f"{to_str(date_from)}-{to_str(date_to)}",
+        # )
+        # if status_vac != 200:
+        #     log.append(
+        #         f"FAILED WINDOW fetch: {to_str(date_from)}-{to_str(date_to)} status={status_vac}"
+        #     )
+        #     failed_windows.append(
+        #         {
+        #             "date_from": to_str(date_from),
+        #             "date_to": to_str(date_to),
+        #             "status": status_vac,
+        #         }
+        #     )
+        #     return  # ОБЯЗАТЕЛЬНО выйти!
+        # else:
+        #     results_raw.extend(res)
 
 
 async def main_async(

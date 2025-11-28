@@ -1,0 +1,963 @@
+main_async(input_start='2025-11-25T17:00:00+0300', input_end='2025-11-25T21:00:00+0300')
+initial_span=datetime.timedelta(seconds=14400), interval=datetime.timedelta(days=15)
+to_str(curr_start)='2025-11-25T17:00:00+0300', to_str(curr_end)='2025-11-25T21:00:00+0300'
+interval=datetime.timedelta(seconds=14400)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T21:00:00+0300: found=11733 status=200
+interval=datetime.timedelta(seconds=14400)
+half=datetime.timedelta(seconds=7200)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T19:00:00+0300'
+to_str(left_end)='2025-11-25T19:05:00+0300', to_str(right_start)='2025-11-25T18:55:00+0300'
+to_str(left_end)='2025-11-25T19:05:00+0300', to_str(right_start)='2025-11-25T18:55:00+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T19:05:00+0300'
+second call: to_str(right_start)='2025-11-25T18:55:00+0300' - to_str(date_to)='2025-11-25T21:00:00+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T19:05:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T18:55:00+0300'
+	to_str(date_to)='2025-11-25T21:00:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=7500)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T19:05:00+0300: found=9422 status=200
+interval=datetime.timedelta(seconds=7500)
+half=datetime.timedelta(seconds=3750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T18:02:30+0300'
+to_str(left_end)='2025-11-25T18:07:30+0300', to_str(right_start)='2025-11-25T17:57:30+0300'
+to_str(left_end)='2025-11-25T18:07:30+0300', to_str(right_start)='2025-11-25T17:57:30+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T18:07:30+0300'
+second call: to_str(right_start)='2025-11-25T17:57:30+0300' - to_str(date_to)='2025-11-25T19:05:00+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T18:07:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:57:30+0300'
+	to_str(date_to)='2025-11-25T19:05:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=4050)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T18:07:30+0300: found=7097 status=200
+interval=datetime.timedelta(seconds=4050)
+half=datetime.timedelta(seconds=2025)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:33:45+0300'
+to_str(left_end)='2025-11-25T17:38:45+0300', to_str(right_start)='2025-11-25T17:28:45+0300'
+to_str(left_end)='2025-11-25T17:38:45+0300', to_str(right_start)='2025-11-25T17:28:45+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T17:38:45+0300'
+second call: to_str(right_start)='2025-11-25T17:28:45+0300' - to_str(date_to)='2025-11-25T18:07:30+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T17:38:45+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:28:45+0300'
+	to_str(date_to)='2025-11-25T18:07:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T17:38:45+0300: found=4833 status=200
+interval=datetime.timedelta(seconds=2325)
+half=datetime.timedelta(seconds=1162, microseconds=500000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:19:22+0300'
+to_str(left_end)='2025-11-25T17:24:22+0300', to_str(right_start)='2025-11-25T17:14:22+0300'
+to_str(left_end)='2025-11-25T17:24:22+0300', to_str(right_start)='2025-11-25T17:14:22+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T17:24:22+0300'
+second call: to_str(right_start)='2025-11-25T17:14:22+0300' - to_str(date_to)='2025-11-25T17:38:45+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T17:24:22+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:14:22+0300'
+	to_str(date_to)='2025-11-25T17:38:45+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T17:24:22+0300: found=3507 status=200
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+half=datetime.timedelta(seconds=731, microseconds=250000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:12:11+0300'
+to_str(left_end)='2025-11-25T17:17:11+0300', to_str(right_start)='2025-11-25T17:07:11+0300'
+to_str(left_end)='2025-11-25T17:17:11+0300', to_str(right_start)='2025-11-25T17:07:11+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T17:17:11+0300'
+second call: to_str(right_start)='2025-11-25T17:07:11+0300' - to_str(date_to)='2025-11-25T17:24:22+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T17:17:11+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:07:11+0300'
+	to_str(date_to)='2025-11-25T17:24:22+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T17:17:11+0300: found=2982 status=200
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+half=datetime.timedelta(seconds=515, microseconds=625000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=257, microseconds=812500), to_str(mid)='2025-11-25T17:08:35+0300'
+to_str(left_end)='2025-11-25T17:12:53+0300', to_str(right_start)='2025-11-25T17:04:17+0300'
+to_str(left_end)='2025-11-25T17:12:53+0300', to_str(right_start)='2025-11-25T17:04:17+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T17:12:53+0300'
+second call: to_str(right_start)='2025-11-25T17:04:17+0300' - to_str(date_to)='2025-11-25T17:17:11+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T17:12:53+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:04:17+0300'
+	to_str(date_to)='2025-11-25T17:17:11+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T17:12:53+0300: found=2333 status=200
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+
+half=datetime.timedelta(seconds=386, microseconds=718750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=193, microseconds=359375), to_str(mid)='2025-11-25T17:06:26+0300'
+to_str(left_end)='2025-11-25T17:09:40+0300', to_str(right_start)='2025-11-25T17:03:13+0300'
+to_str(left_end)='2025-11-25T17:09:40+0300', to_str(right_start)='2025-11-25T17:03:13+0300'
+first call: to_str(date_from)='2025-11-25T17:00:00+0300' - to_str(left_end)='2025-11-25T17:09:40+0300'
+second call: to_str(right_start)='2025-11-25T17:03:13+0300' - to_str(date_to)='2025-11-25T17:12:53+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:00:00+0300'
+	to_str(left_end)='2025-11-25T17:09:40+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:03:13+0300'
+	to_str(date_to)='2025-11-25T17:12:53+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:00:00+0300-2025-11-25T17:09:40+0300: found=1677 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:00:00+0300', to_str(date_to)='2025-11-25T17:09:40+0300')
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:03:13+0300-2025-11-25T17:12:53+0300: found=2333 status=200
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+half=datetime.timedelta(seconds=290, microseconds=39062)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=145, microseconds=19531), to_str(mid)='2025-11-25T17:08:03+0300'
+to_str(left_end)='2025-11-25T17:10:28+0300', to_str(right_start)='2025-11-25T17:05:38+0300'
+to_str(left_end)='2025-11-25T17:10:28+0300', to_str(right_start)='2025-11-25T17:05:38+0300'
+first call: to_str(date_from)='2025-11-25T17:03:13+0300' - to_str(left_end)='2025-11-25T17:10:28+0300'
+second call: to_str(right_start)='2025-11-25T17:05:38+0300' - to_str(date_to)='2025-11-25T17:12:53+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:03:13+0300'
+	to_str(left_end)='2025-11-25T17:10:28+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.237221, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:05:38+0300'
+	to_str(date_to)='2025-11-25T17:12:53+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.237221, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+recursive_fetch_async: 2025-11-25T17:03:13+0300-2025-11-25T17:10:28+0300: found=2333 status=200
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+half=datetime.timedelta(seconds=217, microseconds=529296)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=108, microseconds=764648), to_str(mid)='2025-11-25T17:06:50+0300'
+to_str(left_end)='2025-11-25T17:08:39+0300', to_str(right_start)='2025-11-25T17:05:02+0300'
+to_str(left_end)='2025-11-25T17:08:39+0300', to_str(right_start)='2025-11-25T17:05:02+0300'
+first call: to_str(date_from)='2025-11-25T17:03:13+0300' - to_str(left_end)='2025-11-25T17:08:39+0300'
+second call: to_str(right_start)='2025-11-25T17:05:02+0300' - to_str(date_to)='2025-11-25T17:10:28+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:03:13+0300'
+	to_str(left_end)='2025-11-25T17:08:39+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:05:02+0300'
+	to_str(date_to)='2025-11-25T17:10:28+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=326, microseconds=293944)
+recursive_fetch_async: 2025-11-25T17:03:13+0300-2025-11-25T17:08:39+0300: found=1677 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:03:13+0300', to_str(date_to)='2025-11-25T17:08:39+0300')
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:05:02+0300-2025-11-25T17:10:28+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:05:02+0300', to_str(date_to)='2025-11-25T17:10:28+0300')
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+recursive_fetch_async: 2025-11-25T17:05:38+0300-2025-11-25T17:12:53+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:05:38+0300', to_str(date_to)='2025-11-25T17:12:53+0300')
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:04:17+0300-2025-11-25T17:17:11+0300: found=2982 status=200
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+half=datetime.timedelta(seconds=386, microseconds=718750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=193, microseconds=359375), to_str(mid)='2025-11-25T17:10:44+0300'
+to_str(left_end)='2025-11-25T17:13:57+0300', to_str(right_start)='2025-11-25T17:07:31+0300'
+to_str(left_end)='2025-11-25T17:13:57+0300', to_str(right_start)='2025-11-25T17:07:31+0300'
+first call: to_str(date_from)='2025-11-25T17:04:17+0300' - to_str(left_end)='2025-11-25T17:13:57+0300'
+second call: to_str(right_start)='2025-11-25T17:07:31+0300' - to_str(date_to)='2025-11-25T17:17:11+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:04:17+0300'
+	to_str(left_end)='2025-11-25T17:13:57+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.783918, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:07:31+0300'
+	to_str(date_to)='2025-11-25T17:17:11+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.783918, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:04:17+0300-2025-11-25T17:13:57+0300: found=2333 status=200
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+half=datetime.timedelta(seconds=290, microseconds=39062)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=145, microseconds=19531), to_str(mid)='2025-11-25T17:09:07+0300'
+to_str(left_end)='2025-11-25T17:11:32+0300', to_str(right_start)='2025-11-25T17:06:42+0300'
+to_str(left_end)='2025-11-25T17:11:32+0300', to_str(right_start)='2025-11-25T17:06:42+0300'
+first call: to_str(date_from)='2025-11-25T17:04:17+0300' - to_str(left_end)='2025-11-25T17:11:32+0300'
+second call: to_str(right_start)='2025-11-25T17:06:42+0300' - to_str(date_to)='2025-11-25T17:13:57+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:04:17+0300'
+	to_str(left_end)='2025-11-25T17:11:32+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:06:42+0300'
+	to_str(date_to)='2025-11-25T17:13:57+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+recursive_fetch_async: 2025-11-25T17:04:17+0300-2025-11-25T17:11:32+0300: found=2333 status=200
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+half=datetime.timedelta(seconds=217, microseconds=529296)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=108, microseconds=764648), to_str(mid)='2025-11-25T17:07:55+0300'
+to_str(left_end)='2025-11-25T17:09:44+0300', to_str(right_start)='2025-11-25T17:06:06+0300'
+to_str(left_end)='2025-11-25T17:09:44+0300', to_str(right_start)='2025-11-25T17:06:06+0300'
+first call: to_str(date_from)='2025-11-25T17:04:17+0300' - to_str(left_end)='2025-11-25T17:09:44+0300'
+second call: to_str(right_start)='2025-11-25T17:06:06+0300' - to_str(date_to)='2025-11-25T17:11:32+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:04:17+0300'
+	to_str(left_end)='2025-11-25T17:09:44+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:06:06+0300'
+	to_str(date_to)='2025-11-25T17:11:32+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=326, microseconds=293944)
+recursive_fetch_async: 2025-11-25T17:04:17+0300-2025-11-25T17:09:44+0300: found=1677 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:04:17+0300', to_str(date_to)='2025-11-25T17:09:44+0300')
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:06:06+0300-2025-11-25T17:11:32+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:06:06+0300', to_str(date_to)='2025-11-25T17:11:32+0300')
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+recursive_fetch_async: 2025-11-25T17:06:42+0300-2025-11-25T17:13:57+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:06:42+0300', to_str(date_to)='2025-11-25T17:13:57+0300')
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:07:31+0300-2025-11-25T17:17:11+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+half=datetime.timedelta(seconds=290, microseconds=39062)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=145, microseconds=19531), to_str(mid)='2025-11-25T17:12:21+0300'
+to_str(left_end)='2025-11-25T17:14:46+0300', to_str(right_start)='2025-11-25T17:09:56+0300'
+to_str(left_end)='2025-11-25T17:14:46+0300', to_str(right_start)='2025-11-25T17:09:56+0300'
+first call: to_str(date_from)='2025-11-25T17:07:31+0300' - to_str(left_end)='2025-11-25T17:14:46+0300'
+second call: to_str(right_start)='2025-11-25T17:09:56+0300' - to_str(date_to)='2025-11-25T17:17:11+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:07:31+0300'
+	to_str(left_end)='2025-11-25T17:14:46+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.832634, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:09:56+0300'
+	to_str(date_to)='2025-11-25T17:17:11+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.832634, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+recursive_fetch_async: 2025-11-25T17:07:31+0300-2025-11-25T17:14:46+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:07:31+0300', to_str(date_to)='2025-11-25T17:14:46+0300')
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+recursive_fetch_async: 2025-11-25T17:09:56+0300-2025-11-25T17:17:11+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+half=datetime.timedelta(seconds=217, microseconds=529297)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=108, microseconds=764648), to_str(mid)='2025-11-25T17:13:33+0300'
+to_str(left_end)='2025-11-25T17:15:22+0300', to_str(right_start)='2025-11-25T17:11:44+0300'
+to_str(left_end)='2025-11-25T17:15:22+0300', to_str(right_start)='2025-11-25T17:11:44+0300'
+first call: to_str(date_from)='2025-11-25T17:09:56+0300' - to_str(left_end)='2025-11-25T17:15:22+0300'
+second call: to_str(right_start)='2025-11-25T17:11:44+0300' - to_str(date_to)='2025-11-25T17:17:11+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:09:56+0300'
+	to_str(left_end)='2025-11-25T17:15:22+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:11:44+0300'
+	to_str(date_to)='2025-11-25T17:17:11+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:09:56+0300-2025-11-25T17:15:22+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+half=datetime.timedelta(seconds=163, microseconds=146972)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=81, microseconds=573486), to_str(mid)='2025-11-25T17:12:39+0300'
+to_str(left_end)='2025-11-25T17:14:00+0300', to_str(right_start)='2025-11-25T17:11:17+0300'
+to_str(left_end)='2025-11-25T17:14:00+0300', to_str(right_start)='2025-11-25T17:11:17+0300'
+first call: to_str(date_from)='2025-11-25T17:09:56+0300' - to_str(left_end)='2025-11-25T17:14:00+0300'
+second call: to_str(right_start)='2025-11-25T17:11:17+0300' - to_str(date_to)='2025-11-25T17:15:22+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:09:56+0300'
+	to_str(left_end)='2025-11-25T17:14:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:11:17+0300'
+	to_str(date_to)='2025-11-25T17:15:22+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=244, microseconds=720458)
+interval < MIN_INTERVAL: 2025-11-25T17:09:56+0300-2025-11-25T17:14:00+0300 skipped
+interval=datetime.timedelta(seconds=244, microseconds=720459)
+interval < MIN_INTERVAL: 2025-11-25T17:11:17+0300-2025-11-25T17:15:22+0300 skipped
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:11:44+0300-2025-11-25T17:17:11+0300: found=1305 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:11:44+0300', to_str(date_to)='2025-11-25T17:17:11+0300')
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:07:11+0300-2025-11-25T17:24:22+0300: found=2630 status=200
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+half=datetime.timedelta(seconds=515, microseconds=625000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=257, microseconds=812500), to_str(mid)='2025-11-25T17:15:46+0300'
+to_str(left_end)='2025-11-25T17:20:04+0300', to_str(right_start)='2025-11-25T17:11:29+0300'
+to_str(left_end)='2025-11-25T17:20:04+0300', to_str(right_start)='2025-11-25T17:11:29+0300'
+first call: to_str(date_from)='2025-11-25T17:07:11+0300' - to_str(left_end)='2025-11-25T17:20:04+0300'
+second call: to_str(right_start)='2025-11-25T17:11:29+0300' - to_str(date_to)='2025-11-25T17:24:22+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:07:11+0300'
+	to_str(left_end)='2025-11-25T17:20:04+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.455933, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:11:29+0300'
+	to_str(date_to)='2025-11-25T17:24:22+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.455933, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:07:11+0300-2025-11-25T17:20:04+0300: found=2630 status=200
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+half=datetime.timedelta(seconds=386, microseconds=718750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=193, microseconds=359375), to_str(mid)='2025-11-25T17:13:37+0300'
+to_str(left_end)='2025-11-25T17:16:51+0300', to_str(right_start)='2025-11-25T17:10:24+0300'
+to_str(left_end)='2025-11-25T17:16:51+0300', to_str(right_start)='2025-11-25T17:10:24+0300'
+first call: to_str(date_from)='2025-11-25T17:07:11+0300' - to_str(left_end)='2025-11-25T17:16:51+0300'
+second call: to_str(right_start)='2025-11-25T17:10:24+0300' - to_str(date_to)='2025-11-25T17:20:04+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:07:11+0300'
+	to_str(left_end)='2025-11-25T17:16:51+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:10:24+0300'
+	to_str(date_to)='2025-11-25T17:20:04+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:07:11+0300-2025-11-25T17:16:51+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+half=datetime.timedelta(seconds=290, microseconds=39062)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=145, microseconds=19531), to_str(mid)='2025-11-25T17:12:01+0300'
+to_str(left_end)='2025-11-25T17:14:26+0300', to_str(right_start)='2025-11-25T17:09:36+0300'
+to_str(left_end)='2025-11-25T17:14:26+0300', to_str(right_start)='2025-11-25T17:09:36+0300'
+first call: to_str(date_from)='2025-11-25T17:07:11+0300' - to_str(left_end)='2025-11-25T17:14:26+0300'
+second call: to_str(right_start)='2025-11-25T17:09:36+0300' - to_str(date_to)='2025-11-25T17:16:51+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:07:11+0300'
+	to_str(left_end)='2025-11-25T17:14:26+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:09:36+0300'
+	to_str(date_to)='2025-11-25T17:16:51+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=435, microseconds=58593)
+recursive_fetch_async: 2025-11-25T17:07:11+0300-2025-11-25T17:14:26+0300: found=1456 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:07:11+0300', to_str(date_to)='2025-11-25T17:14:26+0300')
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+recursive_fetch_async: 2025-11-25T17:09:36+0300-2025-11-25T17:16:51+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=435, microseconds=58594)
+half=datetime.timedelta(seconds=217, microseconds=529297)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=108, microseconds=764648), to_str(mid)='2025-11-25T17:13:13+0300'
+to_str(left_end)='2025-11-25T17:15:02+0300', to_str(right_start)='2025-11-25T17:11:25+0300'
+to_str(left_end)='2025-11-25T17:15:02+0300', to_str(right_start)='2025-11-25T17:11:25+0300'
+first call: to_str(date_from)='2025-11-25T17:09:36+0300' - to_str(left_end)='2025-11-25T17:15:02+0300'
+second call: to_str(right_start)='2025-11-25T17:11:25+0300' - to_str(date_to)='2025-11-25T17:16:51+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:09:36+0300'
+	to_str(left_end)='2025-11-25T17:15:02+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:11:25+0300'
+	to_str(date_to)='2025-11-25T17:16:51+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:09:36+0300-2025-11-25T17:15:02+0300: found=2105 status=200
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+half=datetime.timedelta(seconds=163, microseconds=146972)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=81, microseconds=573486), to_str(mid)='2025-11-25T17:12:19+0300'
+to_str(left_end)='2025-11-25T17:13:40+0300', to_str(right_start)='2025-11-25T17:10:57+0300'
+to_str(left_end)='2025-11-25T17:13:40+0300', to_str(right_start)='2025-11-25T17:10:57+0300'
+first call: to_str(date_from)='2025-11-25T17:09:36+0300' - to_str(left_end)='2025-11-25T17:13:40+0300'
+second call: to_str(right_start)='2025-11-25T17:10:57+0300' - to_str(date_to)='2025-11-25T17:15:02+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:09:36+0300'
+	to_str(left_end)='2025-11-25T17:13:40+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:10:57+0300'
+	to_str(date_to)='2025-11-25T17:15:02+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=244, microseconds=720458)
+interval < MIN_INTERVAL: 2025-11-25T17:09:36+0300-2025-11-25T17:13:40+0300 skipped
+interval=datetime.timedelta(seconds=244, microseconds=720459)
+interval < MIN_INTERVAL: 2025-11-25T17:10:57+0300-2025-11-25T17:15:02+0300 skipped
+interval=datetime.timedelta(seconds=326, microseconds=293945)
+recursive_fetch_async: 2025-11-25T17:11:25+0300-2025-11-25T17:16:51+0300: found=1305 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:11:25+0300', to_str(date_to)='2025-11-25T17:16:51+0300')
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:10:24+0300-2025-11-25T17:20:04+0300: found=1830 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:10:24+0300', to_str(date_to)='2025-11-25T17:20:04+0300')
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:11:29+0300-2025-11-25T17:24:22+0300: found=1830 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:11:29+0300', to_str(date_to)='2025-11-25T17:24:22+0300')
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T17:14:22+0300-2025-11-25T17:38:45+0300: found=3156 status=200
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+half=datetime.timedelta(seconds=731, microseconds=250000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:26:33+0300'
+to_str(left_end)='2025-11-25T17:31:33+0300', to_str(right_start)='2025-11-25T17:21:33+0300'
+to_str(left_end)='2025-11-25T17:31:33+0300', to_str(right_start)='2025-11-25T17:21:33+0300'
+first call: to_str(date_from)='2025-11-25T17:14:22+0300' - to_str(left_end)='2025-11-25T17:31:33+0300'
+second call: to_str(right_start)='2025-11-25T17:21:33+0300' - to_str(date_to)='2025-11-25T17:38:45+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:14:22+0300'
+	to_str(left_end)='2025-11-25T17:31:33+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.051594, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:21:33+0300'
+	to_str(date_to)='2025-11-25T17:38:45+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.051594, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:14:22+0300-2025-11-25T17:31:33+0300: found=2695 status=200
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+half=datetime.timedelta(seconds=515, microseconds=625000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=257, microseconds=812500), to_str(mid)='2025-11-25T17:22:58+0300'
+to_str(left_end)='2025-11-25T17:27:15+0300', to_str(right_start)='2025-11-25T17:18:40+0300'
+to_str(left_end)='2025-11-25T17:27:15+0300', to_str(right_start)='2025-11-25T17:18:40+0300'
+first call: to_str(date_from)='2025-11-25T17:14:22+0300' - to_str(left_end)='2025-11-25T17:27:15+0300'
+second call: to_str(right_start)='2025-11-25T17:18:40+0300' - to_str(date_to)='2025-11-25T17:31:33+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:14:22+0300'
+	to_str(left_end)='2025-11-25T17:27:15+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:18:40+0300'
+	to_str(date_to)='2025-11-25T17:31:33+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:14:22+0300-2025-11-25T17:27:15+0300: found=2334 status=200
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+half=datetime.timedelta(seconds=386, microseconds=718750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=193, microseconds=359375), to_str(mid)='2025-11-25T17:20:49+0300'
+to_str(left_end)='2025-11-25T17:24:02+0300', to_str(right_start)='2025-11-25T17:17:35+0300'
+to_str(left_end)='2025-11-25T17:24:02+0300', to_str(right_start)='2025-11-25T17:17:35+0300'
+first call: to_str(date_from)='2025-11-25T17:14:22+0300' - to_str(left_end)='2025-11-25T17:24:02+0300'
+second call: to_str(right_start)='2025-11-25T17:17:35+0300' - to_str(date_to)='2025-11-25T17:27:15+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:14:22+0300'
+	to_str(left_end)='2025-11-25T17:24:02+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:17:35+0300'
+	to_str(date_to)='2025-11-25T17:27:15+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:14:22+0300-2025-11-25T17:24:02+0300: found=1830 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:14:22+0300', to_str(date_to)='2025-11-25T17:24:02+0300')
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:17:35+0300-2025-11-25T17:27:15+0300: found=1678 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:17:35+0300', to_str(date_to)='2025-11-25T17:27:15+0300')
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:18:40+0300-2025-11-25T17:31:33+0300: found=2039 status=200
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+half=datetime.timedelta(seconds=386, microseconds=718750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=193, microseconds=359375), to_str(mid)='2025-11-25T17:25:07+0300'
+to_str(left_end)='2025-11-25T17:28:20+0300', to_str(right_start)='2025-11-25T17:21:53+0300'
+to_str(left_end)='2025-11-25T17:28:20+0300', to_str(right_start)='2025-11-25T17:21:53+0300'
+first call: to_str(date_from)='2025-11-25T17:18:40+0300' - to_str(left_end)='2025-11-25T17:28:20+0300'
+second call: to_str(right_start)='2025-11-25T17:21:53+0300' - to_str(date_to)='2025-11-25T17:31:33+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:18:40+0300'
+	to_str(left_end)='2025-11-25T17:28:20+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.320587, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:21:53+0300'
+	to_str(date_to)='2025-11-25T17:31:33+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.320587, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:18:40+0300-2025-11-25T17:28:20+0300: found=1678 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:18:40+0300', to_str(date_to)='2025-11-25T17:28:20+0300')
+interval=datetime.timedelta(seconds=580, microseconds=78125)
+recursive_fetch_async: 2025-11-25T17:21:53+0300-2025-11-25T17:31:33+0300: found=1390 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:21:53+0300', to_str(date_to)='2025-11-25T17:31:33+0300')
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:21:33+0300-2025-11-25T17:38:45+0300: found=1851 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:21:33+0300', to_str(date_to)='2025-11-25T17:38:45+0300')
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T17:28:45+0300-2025-11-25T18:07:30+0300: found=3590 status=200
+interval=datetime.timedelta(seconds=2325)
+half=datetime.timedelta(seconds=1162, microseconds=500000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:48:07+0300'
+to_str(left_end)='2025-11-25T17:53:07+0300', to_str(right_start)='2025-11-25T17:43:07+0300'
+to_str(left_end)='2025-11-25T17:53:07+0300', to_str(right_start)='2025-11-25T17:43:07+0300'
+first call: to_str(date_from)='2025-11-25T17:28:45+0300' - to_str(left_end)='2025-11-25T17:53:07+0300'
+second call: to_str(right_start)='2025-11-25T17:43:07+0300' - to_str(date_to)='2025-11-25T18:07:30+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:28:45+0300'
+	to_str(left_end)='2025-11-25T17:53:07+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.645983, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:43:07+0300'
+	to_str(date_to)='2025-11-25T18:07:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.645983, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T17:28:45+0300-2025-11-25T17:53:07+0300: found=2448 status=200
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+half=datetime.timedelta(seconds=731, microseconds=250000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:40:56+0300'
+to_str(left_end)='2025-11-25T17:45:56+0300', to_str(right_start)='2025-11-25T17:35:56+0300'
+to_str(left_end)='2025-11-25T17:45:56+0300', to_str(right_start)='2025-11-25T17:35:56+0300'
+first call: to_str(date_from)='2025-11-25T17:28:45+0300' - to_str(left_end)='2025-11-25T17:45:56+0300'
+second call: to_str(right_start)='2025-11-25T17:35:56+0300' - to_str(date_to)='2025-11-25T17:53:07+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:28:45+0300'
+	to_str(left_end)='2025-11-25T17:45:56+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:35:56+0300'
+	to_str(date_to)='2025-11-25T17:53:07+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:28:45+0300-2025-11-25T17:45:56+0300: found=2095 status=200
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+half=datetime.timedelta(seconds=515, microseconds=625000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=257, microseconds=812500), to_str(mid)='2025-11-25T17:37:20+0300'
+to_str(left_end)='2025-11-25T17:41:38+0300', to_str(right_start)='2025-11-25T17:33:02+0300'
+to_str(left_end)='2025-11-25T17:41:38+0300', to_str(right_start)='2025-11-25T17:33:02+0300'
+first call: to_str(date_from)='2025-11-25T17:28:45+0300' - to_str(left_end)='2025-11-25T17:41:38+0300'
+second call: to_str(right_start)='2025-11-25T17:33:02+0300' - to_str(date_to)='2025-11-25T17:45:56+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:28:45+0300'
+	to_str(left_end)='2025-11-25T17:41:38+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:33:02+0300'
+	to_str(date_to)='2025-11-25T17:45:56+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:28:45+0300-2025-11-25T17:41:38+0300: found=1676 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:28:45+0300', to_str(date_to)='2025-11-25T17:41:38+0300')
+interval=datetime.timedelta(seconds=773, microseconds=437500)
+recursive_fetch_async: 2025-11-25T17:33:02+0300-2025-11-25T17:45:56+0300: found=1591 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:33:02+0300', to_str(date_to)='2025-11-25T17:45:56+0300')
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:35:56+0300-2025-11-25T17:53:07+0300: found=1583 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:35:56+0300', to_str(date_to)='2025-11-25T17:53:07+0300')
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T17:43:07+0300-2025-11-25T18:07:30+0300: found=2264 status=200
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+half=datetime.timedelta(seconds=731, microseconds=250000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T17:55:18+0300'
+to_str(left_end)='2025-11-25T18:00:18+0300', to_str(right_start)='2025-11-25T17:50:18+0300'
+to_str(left_end)='2025-11-25T18:00:18+0300', to_str(right_start)='2025-11-25T17:50:18+0300'
+first call: to_str(date_from)='2025-11-25T17:43:07+0300' - to_str(left_end)='2025-11-25T18:00:18+0300'
+second call: to_str(right_start)='2025-11-25T17:50:18+0300' - to_str(date_to)='2025-11-25T18:07:30+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:43:07+0300'
+	to_str(left_end)='2025-11-25T18:00:18+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.608561, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T17:50:18+0300'
+	to_str(date_to)='2025-11-25T18:07:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.608561, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:43:07+0300-2025-11-25T18:00:18+0300: found=1905 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:43:07+0300', to_str(date_to)='2025-11-25T18:00:18+0300')
+interval=datetime.timedelta(seconds=1031, microseconds=250000)
+recursive_fetch_async: 2025-11-25T17:50:18+0300-2025-11-25T18:07:30+0300: found=1495 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:50:18+0300', to_str(date_to)='2025-11-25T18:07:30+0300')
+interval=datetime.timedelta(seconds=4050)
+recursive_fetch_async: 2025-11-25T17:57:30+0300-2025-11-25T19:05:00+0300: found=3466 status=200
+interval=datetime.timedelta(seconds=4050)
+half=datetime.timedelta(seconds=2025)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T18:31:15+0300'
+to_str(left_end)='2025-11-25T18:36:15+0300', to_str(right_start)='2025-11-25T18:26:15+0300'
+to_str(left_end)='2025-11-25T18:36:15+0300', to_str(right_start)='2025-11-25T18:26:15+0300'
+first call: to_str(date_from)='2025-11-25T17:57:30+0300' - to_str(left_end)='2025-11-25T18:36:15+0300'
+second call: to_str(right_start)='2025-11-25T18:26:15+0300' - to_str(date_to)='2025-11-25T19:05:00+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:57:30+0300'
+	to_str(left_end)='2025-11-25T18:36:15+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.201290, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T18:26:15+0300'
+	to_str(date_to)='2025-11-25T19:05:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 2.201290, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T17:57:30+0300-2025-11-25T18:36:15+0300: found=2424 status=200
+interval=datetime.timedelta(seconds=2325)
+half=datetime.timedelta(seconds=1162, microseconds=500000)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T18:16:52+0300'
+to_str(left_end)='2025-11-25T18:21:52+0300', to_str(right_start)='2025-11-25T18:11:52+0300'
+to_str(left_end)='2025-11-25T18:21:52+0300', to_str(right_start)='2025-11-25T18:11:52+0300'
+first call: to_str(date_from)='2025-11-25T17:57:30+0300' - to_str(left_end)='2025-11-25T18:21:52+0300'
+second call: to_str(right_start)='2025-11-25T18:11:52+0300' - to_str(date_to)='2025-11-25T18:36:15+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T17:57:30+0300'
+	to_str(left_end)='2025-11-25T18:21:52+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T18:11:52+0300'
+	to_str(date_to)='2025-11-25T18:36:15+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T17:57:30+0300-2025-11-25T18:21:52+0300: found=1920 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T17:57:30+0300', to_str(date_to)='2025-11-25T18:21:52+0300')
+interval=datetime.timedelta(seconds=1462, microseconds=500000)
+recursive_fetch_async: 2025-11-25T18:11:52+0300-2025-11-25T18:36:15+0300: found=1282 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T18:11:52+0300', to_str(date_to)='2025-11-25T18:36:15+0300')
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T18:26:15+0300-2025-11-25T19:05:00+0300: found=1546 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T18:26:15+0300', to_str(date_to)='2025-11-25T19:05:00+0300')
+interval=datetime.timedelta(seconds=7500)
+recursive_fetch_async: 2025-11-25T18:55:00+0300-2025-11-25T21:00:00+0300: found=2842 status=200
+interval=datetime.timedelta(seconds=7500)
+half=datetime.timedelta(seconds=3750)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T19:57:30+0300'
+to_str(left_end)='2025-11-25T20:02:30+0300', to_str(right_start)='2025-11-25T19:52:30+0300'
+to_str(left_end)='2025-11-25T20:02:30+0300', to_str(right_start)='2025-11-25T19:52:30+0300'
+first call: to_str(date_from)='2025-11-25T18:55:00+0300' - to_str(left_end)='2025-11-25T20:02:30+0300'
+second call: to_str(right_start)='2025-11-25T19:52:30+0300' - to_str(date_to)='2025-11-25T21:00:00+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T18:55:00+0300'
+	to_str(left_end)='2025-11-25T20:02:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.739565, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T19:52:30+0300'
+	to_str(date_to)='2025-11-25T21:00:00+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.739565, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=4050)
+recursive_fetch_async: 2025-11-25T18:55:00+0300-2025-11-25T20:02:30+0300: found=2081 status=200
+interval=datetime.timedelta(seconds=4050)
+half=datetime.timedelta(seconds=2025)
+raw_overlap=datetime.timedelta(seconds=300)
+effective_overlap=datetime.timedelta(seconds=300), to_str(mid)='2025-11-25T19:28:45+0300'
+to_str(left_end)='2025-11-25T19:33:45+0300', to_str(right_start)='2025-11-25T19:23:45+0300'
+to_str(left_end)='2025-11-25T19:33:45+0300', to_str(right_start)='2025-11-25T19:23:45+0300'
+first call: to_str(date_from)='2025-11-25T18:55:00+0300' - to_str(left_end)='2025-11-25T19:33:45+0300'
+second call: to_str(right_start)='2025-11-25T19:23:45+0300' - to_str(date_to)='2025-11-25T20:02:30+0300'
+first await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(date_from)='2025-11-25T18:55:00+0300'
+	to_str(left_end)='2025-11-25T19:33:45+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+second await recursive_fetch_async(
+	session=<aiohttp.client.ClientSession object at 0x1092363c0>
+	to_str(right_start)='2025-11-25T19:23:45+0300'
+	to_str(date_to)='2025-11-25T20:02:30+0300'
+	limiter=<AsyncLimiter(max_rate=5, time_period=1) at 0x109287a70 [level: 1.000000, waiters: 0]>
+	overlap_minutes=5
+)
+
+**************
+
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T18:55:00+0300-2025-11-25T19:33:45+0300: found=1393 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T18:55:00+0300', to_str(date_to)='2025-11-25T19:33:45+0300')
+interval=datetime.timedelta(seconds=2325)
+recursive_fetch_async: 2025-11-25T19:23:45+0300-2025-11-25T20:02:30+0300: found=1028 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T19:23:45+0300', to_str(date_to)='2025-11-25T20:02:30+0300')
+interval=datetime.timedelta(seconds=4050)
+recursive_fetch_async: 2025-11-25T19:52:30+0300-2025-11-25T21:00:00+0300: found=1136 status=200
+fetch_vacancies_async(to_str(date_from)='2025-11-25T19:52:30+0300', to_str(date_to)='2025-11-25T21:00:00+0300')
