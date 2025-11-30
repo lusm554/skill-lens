@@ -265,8 +265,8 @@ class VacancyLoader:
 
 if __name__ == "__main__":
     # Пример использования
-    start_time = "2025-11-25T17:00:00+0300"
-    end_time = "2025-11-25T21:00:00+0300"
+    start_time = "2025-11-25T00:00:00+0300"
+    end_time = "2025-11-26T00:00:00+0300"
 
     loader = VacancyLoader()
 
