@@ -130,6 +130,7 @@ class VacancyLoader:
             unit="sec",
         )
         last_update_time = curr_start
+        total_found = 0
 
         while curr_start < end_dt:
             # Определяем пробный конец интервала
@@ -139,7 +140,7 @@ class VacancyLoader:
             found, status = await self.get_found_count(curr_start, proposed_end)
 
             if status != 200:
-                print(f"CRITICAL: Не удалось проверить интервал. Прерывание.")
+                print("CRITICAL: Не удалось проверить интервал. Прерывание.")
                 break
 
             # ЛОГИКА ШАГОХОДА
@@ -149,6 +150,8 @@ class VacancyLoader:
                     print(
                         f"WARNING: Интервал {curr_step} уже минимален, но found={found}. Берем что есть (потеряем данные >2000)."
                     )
+                    # Так как из интервала возьмем только первые 2000
+                    total_found += 2000
                     intervals.append((curr_start, proposed_end, found))
                     # Сдвигаем время
                     delta = (proposed_end - last_update_time).total_seconds()
@@ -165,6 +168,7 @@ class VacancyLoader:
                 # но шаг увеличим сильнее.
 
                 if found > 0:
+                    total_found += found
                     intervals.append((curr_start, proposed_end, found))
 
                 # Обновляем прогресс бар
@@ -188,7 +192,9 @@ class VacancyLoader:
                     curr_step = timedelta(days=30)
 
         pbar.close()
-        print(f">>> Разведка завершена. Найден {len(intervals)} валидных интервалов.")
+        print(
+            f">>> Разведка завершена. Найден {len(intervals)} валидных интервалов и {total_found} вакансий."
+        )
         return intervals
 
     async def process_interval(self, start, end, expected_found):
