@@ -18,8 +18,8 @@ PER_PAGE = 100
 MAX_ITEMS_PER_SEARCH = 2000
 
 # Настройки скорости и повторов
-RATE_LIMIT = 3  # макс запросов в секунду
-MAX_CONCURRENT_DOWNLOADS = 3  # сколько окон скачивать одновременно
+RATE_LIMIT = 5  # макс запросов в секунду
+MAX_CONCURRENT_DOWNLOADS = 5  # сколько окон скачивать одновременно
 MAX_RETRIES = 5  # попыток при 429/403/5xx
 INITIAL_BACKOFF = 2.0  # начальное ожидание (сек) при ошибке
 
