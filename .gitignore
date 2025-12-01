@@ -3,6 +3,7 @@ data/*
 *.jsonl
 !data/README.md
 .DS_Store
+.hhru_env
 # airflow
 airflow/logs
 

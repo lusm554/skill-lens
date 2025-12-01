@@ -1,6 +1,7 @@
 import asyncio
 import json
 import math
+import os
 from datetime import datetime, timedelta
 
 import aiohttp
@@ -10,6 +11,7 @@ from tqdm.asyncio import tqdm
 # --- КОНФИГУРАЦИЯ ---
 API_URL = "https://api.hh.ru/vacancies"
 USER_AGENT = "Skill Lens/2.0 greedy_walker_approach (loveyousomuch554@gmail.com)"
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 
 # Ограничения HH.ru
 PER_PAGE = 100
@@ -19,7 +21,7 @@ MAX_ITEMS_PER_SEARCH = 2000
 RATE_LIMIT = 3  # макс запросов в секунду
 MAX_CONCURRENT_DOWNLOADS = 3  # сколько окон скачивать одновременно
 MAX_RETRIES = 5  # попыток при 429/403/5xx
-INITIAL_BACKOFF = 10.0  # начальное ожидание (сек) при ошибке
+INITIAL_BACKOFF = 2.0  # начальное ожидание (сек) при ошибке
 
 # Настройки "Шагохода" (Slicer)
 INITIAL_STEP = timedelta(minutes=60)  # Начальный шаг проверки (1 час)
@@ -44,7 +46,10 @@ class VacancyLoader:
         Выполняет запрос с Rate Limit и экспоненциальным Backoff.
         """
         url = API_URL
-        headers = {"HH-User-Agent": USER_AGENT}
+        headers = {
+            "HH-User-Agent": USER_AGENT,
+            "Authorization": f"Bearer {AUTH_TOKEN}",
+        }
         delay = INITIAL_BACKOFF
 
         for attempt in range(MAX_RETRIES):
