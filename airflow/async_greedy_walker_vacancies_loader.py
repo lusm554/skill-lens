@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 
 import aiohttp
+import humanize
 from aiolimiter import AsyncLimiter
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
@@ -288,6 +289,9 @@ class VacancyLoader:
         start_dt = parse_dt(input_start)
         end_dt = parse_dt(input_end)
 
+        delta = end_dt - start_dt
+        print("Запрашиваемый период времени:", humanize.precisedelta(delta))
+
         # TCPConnector limit увеличен для скорости
         connector = aiohttp.TCPConnector(limit=100)
         async with aiohttp.ClientSession(connector=connector) as session:
@@ -325,7 +329,7 @@ class VacancyLoader:
 
 
 if __name__ == "__main__":
-    start_time = "2025-11-25T00:00:00+0300"
+    start_time = "2025-11-23T00:00:00+0300"
     end_time = "2025-11-26T00:00:00+0300"
 
     loader = VacancyLoader()
