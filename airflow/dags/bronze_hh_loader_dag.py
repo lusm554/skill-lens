@@ -1,15 +1,12 @@
 """
-### Bronze Layer: HH.ru Vacancies Loader (TaskFlow API / Airflow 3.x)
+### Bronze Layer: HH.ru Vacancies Loader
 
-Этот DAG загружает сырые вакансии с API HH.ru.
-Методология: ELT (Extract, Load).
-
-Стек:
-- Airflow SDK (TaskFlow API)
-- Asyncio (aiohttp, aiolimiter)
-- S3 (MinIO)
-
-Расписание: Ежедневно в 00:00 (забирает данные за прошедшие сутки).
+Стек: Airflow SDK, Asyncio, S3, Airflow Variables.
+Логика:
+1. Вычисляем окно "Вчерашние сутки по Москве" на основе logical_date.
+2. Берем токен из Airflow Variables (или обновляем, если протух).
+3. Скачиваем вакансии асинхронно.
+4. Грузим в S3.
 """
 
 import asyncio
@@ -23,10 +20,11 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 import aiohttp
+import pendulum  # Стандартная библиотека времени в Airflow
 from aiolimiter import AsyncLimiter
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.sdk import dag, task  # Airflow 3.x SDK
+from airflow.sdk import dag, task
 
 # --- КОНФИГУРАЦИЯ ---
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -35,6 +33,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 API_URL = "https://api.hh.ru/vacancies"
 OAUTH_URL = "https://hh.ru/oauth/token"
 USER_AGENT = "Skill Lens/Airflow-Worker (bronze-loader)"
+AIRFLOW_VAR_TOKEN_KEY = "HH_AUTH_TOKEN_INFO"  # Ключ переменной в Airflow
 
 # Настройки производительности
 RATE_LIMIT = 10
@@ -49,58 +48,93 @@ PER_PAGE = 100
 logger = logging.getLogger("airflow.task")
 
 
-# --- ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ (БЕЗ ИЗМЕНЕНИЙ) ---
-
-
 class TokenManager:
-    """Управляет получением и обновлением OAuth токена HH.ru."""
+    """
+    Управляет токеном, сохраняя его в Airflow Variables.
+    Это позволяет использовать один токен между разными запусками DAG.
+    """
 
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.access_token = None
-        self.expires_at = 0
-        self._lock = asyncio.Lock()
+        # Локальный кеш в рамках одного запуска, чтобы не долбить БД Airflow
+        self._memory_token = None
+
+    def get_token_sync(self) -> Optional[str]:
+        """Синхронное получение токена (для инициализации)."""
+        token_info = Variable.get(
+            AIRFLOW_VAR_TOKEN_KEY, deserialize_json=True, default_var=None
+        )
+        if token_info and self._is_valid(token_info):
+            return token_info["access_token"]
+        return None
 
     async def get_token(self, session: aiohttp.ClientSession) -> str:
-        if self._is_valid():
-            return self.access_token
-        async with self._lock:
-            if self._is_valid():
-                return self.access_token
-            await self._refresh_token(session)
-            return self.access_token
+        # 1. Сначала смотрим в память процесса
+        if self._memory_token:
+            return self._memory_token
 
-    def _is_valid(self) -> bool:
-        return self.access_token and time.time() < (self.expires_at - 60)
+        # 2. Смотрим в Airflow Variables (база данных)
+        # Variable.get - синхронный вызов, но он быстрый
+        token_info = Variable.get(
+            AIRFLOW_VAR_TOKEN_KEY, deserialize_json=True, default_var=None
+        )
 
-    async def _refresh_token(self, session: aiohttp.ClientSession):
+        if token_info and self._is_valid(token_info):
+            self._memory_token = token_info["access_token"]
+            return self._memory_token
+
+        # 3. Если нет или протух — обновляем через API
+        return await self._refresh_token(session)
+
+    def invalidate_token(self):
+        """Сбрасывает токен при ошибке 401/403."""
+        logger.warning("Invalidating token in Variables and memory...")
+        self._memory_token = None
+        # Удаляем из переменных Airflow, чтобы следующий запуск получил новый
+        Variable.delete(AIRFLOW_VAR_TOKEN_KEY)
+
+    def _is_valid(self, token_info: dict) -> bool:
+        # Валиден, если до истечения больше 30 минут
+        expires_at = token_info.get("expires_at", 0)
+        return time.time() < (expires_at - (60 * 30))
+
+    async def _refresh_token(self, session: aiohttp.ClientSession) -> Optional[str]:
         payload = {
             "grant_type": "client_credentials",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
-        logger.info("Refreshing Auth Token...")
+        logger.info("Requesting NEW Auth Token from HH.ru...")
         try:
             async with session.post(OAUTH_URL, data=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    self.access_token = data["access_token"]
+                    access_token = data["access_token"]
                     expires_in = data.get("expires_in", 1209600)
-                    self.expires_at = time.time() + expires_in
-                    logger.info(f"Token refreshed. Expires in {expires_in}s")
+
+                    # Сохраняем в Airflow Variables
+                    token_info = {
+                        "access_token": access_token,
+                        "expires_at": time.time() + expires_in,
+                    }
+                    Variable.set(AIRFLOW_VAR_TOKEN_KEY, json.dumps(token_info))
+                    logger.info(
+                        f"Token saved to Airflow Variables. Expires in {expires_in}s"
+                    )
+
+                    self._memory_token = access_token
+                    return access_token
                 else:
                     text = await resp.text()
-                    logger.error(f"Token refresh failed: {resp.status} - {text}")
-                    self.access_token = None
+                    logger.error(f"Token request failed: {resp.status} - {text}")
+                    return None
         except Exception as e:
             logger.error(f"Token refresh exception: {e}")
-            self.access_token = None
+            return None
 
 
 class VacancyLoader:
-    """Основной класс для выгрузки вакансий."""
-
     def __init__(self, client_id: str, client_secret: str):
         self.limiter = AsyncLimiter(RATE_LIMIT, time_period=1)
         self.session = None
@@ -113,7 +147,7 @@ class VacancyLoader:
         for attempt in range(MAX_RETRIES):
             token = await self.token_manager.get_token(self.session)
             if not token:
-                logger.error("No valid token available.")
+                logger.error("Failed to obtain token.")
                 return None, 401
 
             headers = {
@@ -131,18 +165,22 @@ class VacancyLoader:
                         if status == 200:
                             return await resp.json(), 200
 
-                        if status == 401:
-                            logger.warning("Token expired (401). Resetting.")
-                            self.token_manager.access_token = None
+                        # Если токен невалиден, сбрасываем его и пробуем снова (re-auth)
+                        if status in [401, 403]:
+                            logger.warning(
+                                f"Auth error ({status}). Invalidating token and retrying..."
+                            )
+                            self.token_manager.invalidate_token()
+                            await asyncio.sleep(1)  # Небольшая пауза перед повтором
                             continue
 
-                        if status in [429, 403, 500, 502, 503, 504]:
+                        if status in [429, 500, 502, 503, 504]:
                             logger.warning(f"Status {status}. Retrying in {delay}s...")
                             await asyncio.sleep(delay)
                             delay *= 2
                             continue
 
-                        logger.error(f"Unrecoverable status {status} for {params}")
+                        logger.error(f"Unrecoverable status {status} for params")
                         return None, status
                 except Exception as e:
                     logger.error(f"Network error: {e}. Retrying...")
@@ -180,16 +218,18 @@ class VacancyLoader:
         curr_start = start_dt
         curr_step = INITIAL_STEP
 
+        # Предварительная проверка авторизации
         if not await self.token_manager.get_token(self.session):
             return []
 
-        logger.info("Starting Greedy Walker slicing...")
+        logger.info(f"Slicing window: {start_dt} -> {end_dt}")
+
         while curr_start < end_dt:
             proposed_end = min(curr_start + curr_step, end_dt)
             found, status = await self.get_found_count(curr_start, proposed_end)
 
             if status not in [200, 404] and found == 0:
-                logger.error("Stopping slicing due to repeated API errors.")
+                logger.error("Critical API Error during slicing.")
                 break
 
             if found > MAX_ITEMS_PER_SEARCH:
@@ -201,18 +241,15 @@ class VacancyLoader:
             else:
                 if found > 0:
                     intervals.append((curr_start, proposed_end, found))
-
                 curr_start = proposed_end + timedelta(seconds=1)
 
                 if found < 500:
                     curr_step *= 2
                 elif found > 1500:
                     curr_step *= 0.8
-
                 if curr_step > timedelta(days=7):
                     curr_step = timedelta(days=7)
 
-        logger.info(f"Slicing complete. Generated {len(intervals)} intervals.")
         return intervals
 
     async def process_interval(
@@ -227,10 +264,10 @@ class VacancyLoader:
         connector = aiohttp.TCPConnector(limit=100)
         async with aiohttp.ClientSession(connector=connector) as session:
             self.session = session
-
             intervals = await self.generate_intervals(start_dt, end_dt)
+
             if not intervals:
-                logger.warning("No intervals found or auth failed.")
+                logger.warning("No intervals found.")
                 return
 
             all_vacancies = []
@@ -240,98 +277,92 @@ class VacancyLoader:
                 async with sem:
                     return await self.process_interval(idata[0], idata[1], idata[2])
 
-            logger.info(f"Downloading content for {len(intervals)} intervals...")
             tasks = [worker(i) for i in intervals]
 
+            logger.info(f"Downloading {len(intervals)} intervals...")
             for i, coro in enumerate(asyncio.as_completed(tasks)):
                 items = await coro
                 all_vacancies.extend(items)
-                if i % 10 == 0:
-                    logger.info(f"Processed {i}/{len(intervals)} intervals...")
+                if i > 0 and i % 50 == 0:
+                    logger.info(f"Progress: {i}/{len(intervals)}...")
 
-            logger.info(f"Total vacancies fetched: {len(all_vacancies)}")
+            logger.info(f"Total downloaded: {len(all_vacancies)}")
 
-            logger.info(f"Saving compressed data to {output_path}...")
             with gzip.open(output_path, "wt", encoding="utf-8") as f:
                 for v in all_vacancies:
                     f.write(json.dumps(v, ensure_ascii=False) + "\n")
-
-            logger.info("Save complete.")
 
 
 # --- TASKFLOW DEFINITION ---
 
 
 @task(task_id="fetch_and_upload_to_s3")
-def fetch_and_upload_to_s3(
-    data_interval_start: datetime = None, data_interval_end: datetime = None
-):
+def fetch_and_upload_to_s3(logical_date=None):
     """
-    TaskFlow задача:
-    1. Запускает Async Loader.
-    2. Загружает файл в S3.
-    Airflow 3 автоматически инжектит data_interval_start/end.
+    Основная задача.
+    logical_date - это время запуска по расписанию (в UTC).
+    Например, для запуска 3 декабря в 00:00, logical_date будет 3 декабря 00:00 UTC.
     """
     if not CLIENT_ID or not CLIENT_SECRET:
-        raise ValueError("CLIENT_ID or CLIENT_SECRET not found in env!")
+        raise ValueError("CLIENT_ID or CLIENT_SECRET missing!")
 
-    logger.info(data_interval_start)
+    # 1. Работа с датами (Timezone Aware)
+    # Конвертируем UTC logical_date в Moscow Time
+    msk_tz = pendulum.timezone("Europe/Moscow")
 
-    # 1. Формируем пути
-    date_str = data_interval_start.strftime("%Y-%m-%d")
-    logger.info(date_str)
+    # Airflow передает pendulum.DateTime
+    run_date_msk = logical_date.in_timezone(msk_tz)
+
+    # Нам нужны ПОЛНЫЕ ПРОШЛЫЕ СУТКИ от момента запуска.
+    # Если запуск 3 декабря 00:00 MSK -> мы хотим данные за 2 декабря (с 00:00 до 23:59:59).
+    # Определяем "конец" окна как начало текущего дня запуска (00:00:00)
+    end_dt = run_date_msk.start_of("day")
+    # Определяем "начало" окна как минус 1 день
+    start_dt = end_dt.subtract(days=1)
+
+    logger.info(f"Logical Date (UTC): {logical_date}")
+    logger.info(f"Target Window (MSK): {start_dt} -> {end_dt}")
+
+    # 2. Формируем пути
+    date_str = start_dt.strftime("%Y-%m-%d")  # Имя файла по дате начала данных
     local_filename = f"hh_vacancies_{date_str}.jsonl.gz"
     local_path = f"/tmp/{local_filename}"
-    return
 
-    # Путь в S3: bronze/hh/vacancies/date=YYYY-MM-DD/hh_vacancies.jsonl.gz
     s3_key = f"hh/vacancies/date={date_str}/{local_filename}"
     s3_bucket = "bronze"
 
-    logger.info(
-        f"Starting ETL for period: {data_interval_start} -> {data_interval_end}"
-    )
-
-    # 2. Extract (Скачивание на диск)
+    # 3. Запуск Loader
     loader = VacancyLoader(CLIENT_ID, CLIENT_SECRET)
-    asyncio.run(loader.run(data_interval_start, data_interval_end, local_path))
+    asyncio.run(loader.run(start_dt, end_dt, local_path))
 
-    # Проверка, что файл создан
+    # 4. Проверка и загрузка
     if not os.path.exists(local_path):
-        logger.warning("File was not created. No vacancies found?")
+        logger.warning("No file created. Empty run?")
         return
 
-    # 3. Load (Загрузка в S3)
-    logger.info(f"Uploading to S3: s3://{s3_bucket}/{s3_key}")
+    logger.info(f"Uploading to s3://{s3_bucket}/{s3_key}")
     s3_hook = S3Hook(aws_conn_id="aws_default")
 
-    # Проверка бакета
     if not s3_hook.check_for_bucket(s3_bucket):
         s3_hook.create_bucket(s3_bucket)
 
     s3_hook.load_file(
         filename=local_path, key=s3_key, bucket_name=s3_bucket, replace=True
     )
-    logger.info("Upload successful.")
 
-    # 4. Cleanup
     os.remove(local_path)
-    logger.info("Local temp file removed.")
+    logger.info("Done.")
 
 
 @dag(
     dag_id="bronze_hh_loader",
-    description="Loads raw HH.ru vacancies to S3 Bronze layer using TaskFlow API",
-    # Cron-выражение: 0 минута, 0 час, каждый день.
-    schedule="0 0 * * *",
+    schedule="0 0 * * *",  # Каждый день в 00:00 UTC (или серверного времени)
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    tags=["bronze", "hh", "etl", "airflow3"],
+    tags=["bronze", "hh", "etl"],
 )
 def bronze_hh_loader_dag():
-    # Вызов задачи
     fetch_and_upload_to_s3()
 
 
-# Инициализация DAG
 bronze_hh_loader_dag()
