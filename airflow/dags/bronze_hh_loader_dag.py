@@ -24,6 +24,8 @@ import pendulum  # Стандартная библиотека времени в
 from aiolimiter import AsyncLimiter
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+
+# from airflow.sdk import Variable
 from airflow.sdk import dag, task
 
 # --- КОНФИГУРАЦИЯ ---
