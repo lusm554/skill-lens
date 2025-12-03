@@ -1,0 +1,11 @@
+apache-airflow-providers-amazon  # Для работы с S3/MinIO
+aiohttp
+aiolimiter
+humanize
+tqdm
+python-dotenv
+# Библиотеки для ETL (Bronze/Silver слой)
+polars
+pyarrow
+s3fs           # Чтобы polars мог читать/писать в s3://
+adlfs          # Иногда нужен как зависимость fsspec
