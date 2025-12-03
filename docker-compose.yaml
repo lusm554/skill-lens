@@ -1,55 +1,66 @@
-version: "3.8"
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.
+# ... (Legal header omitted for brevity) ...
 
-x-airflow-common: &airflow-common # Собираем образ из папки airflow
+x-airflow-common: &airflow-common
+  # ИЗМЕНЕНИЕ 1: Собираем образ локально из папки airflow
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.3}
   build:
     context: ./airflow
     dockerfile: Dockerfile
+
+  # ИЗМЕНЕНИЕ 2: Подключаем переменные (включая секреты HH)
   env_file:
-    - ./airflow/.env # Если используете .env внутри airflow
+    - ./airflow/.env # стандартные настройки airflow
+    - ./airflow/.hhru_env # твои client_id/secret
+
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ""
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    AIRFLOW__CORE__LOAD_EXAMPLES: "false" # Отключил примеры, чтобы не мусорить
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-apiserver:8080/execution/"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
-
-    # --- НАСТРОЙКИ MINIO (S3) ДЛЯ AIRFLOW ---
-    # Автоматическое создание Connection 'aws_default'
-    # Формат: aws://user:pass@?host=http://host:port
+    # ИЗМЕНЕНИЕ 3: Настройки подключения к MinIO (S3)
     AIRFLOW_CONN_AWS_DEFAULT: "aws://minioadmin:minioadmin@?host=http%3A%2F%2Fminio%3A9000"
-    # Переменные для boto3/s3fs внутри скриптов, если они берут их из env
     AWS_ACCESS_KEY_ID: minioadmin
     AWS_SECRET_ACCESS_KEY: minioadmin
     AWS_ENDPOINT_URL: http://minio:9000
     AWS_DEFAULT_REGION: us-east-1
 
+    # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW_CONFIG: "/opt/airflow/config/airflow.cfg"
+
+  # ИЗМЕНЕНИЕ 4: Пути исправлены на ./airflow/...
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/config:/opt/airflow/config
     - ./airflow/plugins:/opt/airflow/plugins
-    # Прокидываем .hhru_env в корень контейнера или куда удобно скрипту
-    # - ./airflow/.hhru_env:/opt/airflow/.hhru_env
+
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
     postgres:
       condition: service_healthy
+    # ИЗМЕНЕНИЕ 5: Зависимость от MinIO
     minio:
       condition: service_started
 
 services:
-  # --- MINIO SERVICES ---
+  # --- MINIO SERVICES (ДОБАВЛЕНО) ---
   minio:
     image: minio/minio:latest
     container_name: skill-lens-minio
     ports:
-      - "9000:9000" # API
-      - "9001:9001" # Console UI
+      - "9000:9000"
+      - "9001:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -63,7 +74,6 @@ services:
       timeout: 20s
       retries: 3
 
-  # Утилита для создания бакетов при старте (чтобы не создавать руками)
   minio-create-buckets:
     image: minio/mc
     depends_on:
@@ -72,16 +82,15 @@ services:
     entrypoint: >
       /bin/sh -c "
       /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      /usr/bin/mc mb myminio/bronze;
-      /usr/bin/mc mb myminio/silver;
-      /usr/bin/mc mb myminio/gold;
+      /usr/bin/mc mb myminio/bronze || true;
+      /usr/bin/mc mb myminio/silver || true;
+      /usr/bin/mc mb myminio/gold || true;
       exit 0;
       "
 
-  # --- AIRFLOW SERVICES ---
+  # --- STANDARD AIRFLOW SERVICES ---
   postgres:
     image: postgres:16
-    container_name: skill-lens-postgres
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -97,7 +106,6 @@ services:
 
   redis:
     image: redis:7.2-bookworm
-    container_name: skill-lens-redis
     expose:
       - 6379
     healthcheck:
@@ -130,6 +138,25 @@ services:
     command: scheduler
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -181,28 +208,97 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # --- ОФИЦИАЛЬНЫЙ СКРИПТ ИНИЦИАЛИЗАЦИИ ---
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
+    # yamllint disable rule:line-length
     command:
       - -c
       - |
         if [[ -z "${AIRFLOW_UID}" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
+          echo "If you are on Linux, you SHOULD follow the instructions below to set "
+          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
+          echo
           export AIRFLOW_UID=$$(id -u)
         fi
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        disk_available=$$(df / | tail -1 | awk '{print $$4}')
+        warning_resources="false"
+        if (( mem_available < 4000 )) ; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
+          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
+          echo
+          warning_resources="true"
+        fi
+        if (( cpus_available < 2 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
+          echo "At least 2 CPUs recommended. You have $${cpus_available}"
+          echo
+          warning_resources="true"
+        fi
+        if (( disk_available < one_meg * 10 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
+          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
+          echo
+          warning_resources="true"
+        fi
+        if [[ $${warning_resources} == "true" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
+          echo "Please follow the instructions to increase amount of resources available:"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
+          echo
+        fi
+        echo
+        echo "Creating missing opt dirs if missing:"
+        echo
         mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
-        # Инициализация БД
+        echo
+        echo "Airflow version:"
         /entrypoint airflow version
-        /entrypoint airflow db migrate
-        /entrypoint airflow users create --username airflow --firstname Peter --lastname Parker --role Admin --email spiderman@superhero.org --password airflow
-        # Установка прав
-        chown -R "${AIRFLOW_UID}:0" /opt/airflow/{logs,dags,plugins,config}
+        echo
+        echo "Files in shared volumes:"
+        echo
+        ls -la /opt/airflow/{logs,dags,plugins,config}
+        echo
+        echo "Running airflow config list to create default config file if missing."
+        echo
+        /entrypoint airflow config list >/dev/null
+        echo
+        echo "Files in shared volumes:"
+        echo
+        ls -la /opt/airflow/{logs,dags,plugins,config}
+        echo
+        echo "Change ownership of files in /opt/airflow to ${AIRFLOW_UID}:0"
+        echo
+        chown -R "${AIRFLOW_UID}:0" /opt/airflow/
+        echo
+        echo "Change ownership of files in shared volumes to ${AIRFLOW_UID}:0"
+        echo
+        chown -v -R "${AIRFLOW_UID}:0" /opt/airflow/{logs,dags,plugins,config}
+        echo
+        echo "Files in shared volumes:"
+        echo
+        ls -la /opt/airflow/{logs,dags,plugins,config}
+
+    # yamllint enable rule:line-length
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
     user: "0:0"
 
   airflow-cli:
@@ -226,6 +322,12 @@ services:
       - flower
     ports:
       - "5555:5555"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
