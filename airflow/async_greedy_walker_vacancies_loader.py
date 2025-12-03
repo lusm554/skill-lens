@@ -36,7 +36,7 @@ MAX_RETRIES = 5  # попыток при 429/403/5xx
 INITIAL_BACKOFF = 1.0  # Секунд
 
 INITIAL_STEP = timedelta(minutes=60)
-MIN_STEP = timedelta(minutes=1)
+MIN_STEP = timedelta(seconds=30)
 
 
 def parse_dt(dt_str):
@@ -236,6 +236,7 @@ class VacancyLoader:
                 # Слишком много, уменьшаем шаг
                 if curr_step <= MIN_STEP:
                     # Шаг минимален, берем что есть
+                    print(f"Warning min step, but vacancies {found}")
                     intervals.append((curr_start, proposed_end, found))
                     delta = (proposed_end - last_update_time).total_seconds()
                     pbar.update(int(delta))
@@ -329,8 +330,8 @@ class VacancyLoader:
 
 
 if __name__ == "__main__":
-    start_time = "2025-11-23T00:00:00+0300"
-    end_time = "2025-11-26T00:00:00+0300"
+    start_time = "2025-12-01T00:00:00+0300"
+    end_time = "2025-12-01T12:00:00+0300"
 
     loader = VacancyLoader()
     asyncio.run(loader.run(start_time, end_time, "vacancies_auth.jsonl"))
