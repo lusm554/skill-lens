@@ -1,14 +1,18 @@
 """
-### Bronze Layer: HH.ru Vacancies Loader (Chunked Strategy)
+### Bronze Layer: HH.ru Vacancies Loader (Advanced Drilling Strategy)
 
-Стек: Airflow SDK, Asyncio, S3.
-Стратегия:
-- Данные скачиваются батчами (по 10,000 вакансий).
-- Каждый батч сразу сжимается и улетает в S3 (part_001.jsonl.gz, ...).
-- RAM очищается после каждого батча.
-- При перезапуске папка за конкретную дату в S3 предварительно очищается (полная перезаливка).
+DAG выгружает сырые вакансии за прошедшие сутки в S3 (Data Lake Bronze).
 
-Расписание: Ежедневно в 00:00.
+**Стратегия обхода ограничений (2000 вакансий на запрос):**
+1. **Time Slicing:** Сначала пытаемся уменьшить временное окно (вплоть до 1 минуты).
+2. **Employment Slicing:** Если в 1 минуте > 2000 вакансий, разбиваем запрос по `employment_form` (Полная, Частичная, Проект...).
+3. **Work Format Slicing:** Если и этого мало, добавляем разбиение по `work_format` (Удаленка, Офис...).
+4. **Hard Cap:** Если даже с максимальными фильтрами вакансий > 2000, скачиваем первые 2000 и идем дальше.
+
+**Параметры:**
+- Расписание: 00:00 ежедневно.
+- Формат: JSONL.GZ
+- S3 Путь: s3://bronze/hh/vacancies/date=YYYY-MM-DD/
 """
 
 import asyncio
@@ -19,7 +23,7 @@ import math
 import os
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 import pendulum
@@ -34,27 +38,45 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
 API_URL = "https://api.hh.ru/vacancies"
 OAUTH_URL = "https://hh.ru/oauth/token"
-USER_AGENT = "Skill Lens/Airflow-Worker (bronze-loader)"
+USER_AGENT = "Skill Lens/Airflow-Worker (bronze-loader-v3)"
 AIRFLOW_VAR_TOKEN_KEY = "HH_AUTH_TOKEN_INFO"
 
-# Настройки производительности
-RATE_LIMIT = 10
-MAX_CONCURRENT_DOWNLOADS = 10
+# Лимиты и настройки
+RATE_LIMIT = 10  # Запросов в секунду
+MAX_CONCURRENT_DOWNLOADS = 10  # Параллельность скачивания страниц
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 1.0
-INITIAL_STEP = timedelta(minutes=60)
-MIN_STEP = timedelta(minutes=1)
-MAX_ITEMS_PER_SEARCH = 2000
+BATCH_SIZE = 10000  # Размер пачки для сброса на диск
+MAX_API_DEPTH = 2000  # Жесткий лимит HH.ru (20 страниц * 100)
 PER_PAGE = 100
 
-# Настройки батчинга
-BATCH_SIZE = 10_000  # Сколько вакансий держать в RAM перед сбросом на диск/S3
+# Стратегия нарезки
+INITIAL_STEP = timedelta(minutes=60)
+MIN_STEP = timedelta(minutes=1)  # Меньше минуты не дробим, переходим к параметрам
+
+# Справочники для дробления (Drill Down)
+# Источник: https://api.hh.ru/dictionaries
+EMPLOYMENT_FORMS = [
+    "FULL",  # Полная занятость
+    "PART",  # Частичная занятость
+    "PROJECT",  # Проектная работа
+    "FLY_IN_FLY_OUT",  # Вахта
+    "SIDE_JOB",  # Подработка
+]
+
+WORK_FORMATS = [
+    "ON_SITE",  # На месте
+    "REMOTE",  # Удаленно
+    "HYBRID",  # Гибрид
+    "FIELD_WORK",  # Разъездной
+]
 
 logger = logging.getLogger("airflow.task")
 
 
+# --- МЕНЕДЖЕР ТОКЕНОВ ---
 class TokenManager:
-    """Управление токеном (хранение в Airflow Variables)."""
+    """Отвечает за получение, кеширование и обновление токена через Airflow Variables."""
 
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
@@ -62,9 +84,11 @@ class TokenManager:
         self._memory_token = None
 
     async def get_token(self, session: aiohttp.ClientSession) -> str:
+        # 1. Проверяем память (самый быстрый путь)
         if self._memory_token:
             return self._memory_token
 
+        # 2. Проверяем Airflow Variables (база данных)
         token_info = Variable.get(
             AIRFLOW_VAR_TOKEN_KEY, deserialize_json=True, default_var=None
         )
@@ -72,13 +96,17 @@ class TokenManager:
             self._memory_token = token_info["access_token"]
             return self._memory_token
 
+        # 3. Обновляем через API
         return await self._refresh_token(session)
 
     def invalidate_token(self):
+        """Сброс токена при ошибках 401/403."""
+        logger.warning("[AUTH] Invalidating token...")
         self._memory_token = None
         Variable.delete(AIRFLOW_VAR_TOKEN_KEY)
 
     def _is_valid(self, token_info: dict) -> bool:
+        # Валиден, если до истечения осталось больше 5 минут
         return time.time() < (token_info.get("expires_at", 0) - 300)
 
     async def _refresh_token(self, session: aiohttp.ClientSession) -> Optional[str]:
@@ -87,13 +115,14 @@ class TokenManager:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
-        logger.info("Requesting NEW Auth Token...")
+        logger.info("[AUTH] Requesting NEW Token from HH...")
         try:
             async with session.post(OAUTH_URL, data=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     access_token = data["access_token"]
                     expires_in = data.get("expires_in", 1209600)
+
                     Variable.set(
                         AIRFLOW_VAR_TOKEN_KEY,
                         json.dumps(
@@ -104,15 +133,17 @@ class TokenManager:
                         ),
                     )
                     self._memory_token = access_token
+                    logger.info(f"[AUTH] Token refreshed. Expires in {expires_in}s")
                     return access_token
                 else:
-                    logger.error(f"Token error: {resp.status} - {await resp.text()}")
+                    logger.error(f"[AUTH] Error: {resp.status} - {await resp.text()}")
                     return None
         except Exception as e:
-            logger.error(f"Token exception: {e}")
+            logger.error(f"[AUTH] Exception: {e}")
             return None
 
 
+# --- ЗАГРУЗЧИК ВАКАНСИЙ ---
 class VacancyLoader:
     def __init__(self, client_id: str, client_secret: str):
         self.limiter = AsyncLimiter(RATE_LIMIT, time_period=1)
@@ -120,8 +151,10 @@ class VacancyLoader:
         self.token_manager = TokenManager(client_id, client_secret)
 
     async def _request(self, params: dict) -> Tuple[Optional[dict], int]:
+        """Базовый метод запроса с ретраями и обработкой ошибок."""
         url = API_URL
         delay = INITIAL_BACKOFF
+
         for attempt in range(MAX_RETRIES):
             token = await self.token_manager.get_token(self.session)
             if not token:
@@ -132,6 +165,7 @@ class VacancyLoader:
                 "Authorization": f"Bearer {token}",
                 "Accept": "*/*",
             }
+
             async with self.limiter:
                 try:
                     async with self.session.get(
@@ -140,223 +174,312 @@ class VacancyLoader:
                         status = resp.status
                         if status == 200:
                             return await resp.json(), 200
+
+                        # Авторизация слетела
                         if status in [401, 403]:
-                            logger.warning(f"Auth error {status}. Retrying...")
+                            logger.warning(f"[API] Auth error {status}. Retrying...")
                             self.token_manager.invalidate_token()
                             await asyncio.sleep(1)
                             continue
+
+                        # Лимиты или серверные ошибки
                         if status in [429, 500, 502, 503, 504]:
-                            logger.warning(f"Status {status}. Retrying in {delay}s...")
                             await asyncio.sleep(delay)
                             delay *= 2
                             continue
-                        logger.error(f"Error {status} params={params}")
+
+                        # Bad Request (часто при запросе page > 19)
+                        if status == 400:
+                            return None, 400
+
+                        logger.error(
+                            f"[API] Unrecoverable error {status} params={params}"
+                        )
                         return None, status
                 except Exception as e:
-                    logger.error(f"Net error: {e}")
+                    logger.error(f"[API] Network error: {e}")
                     await asyncio.sleep(delay)
                     delay *= 2
         return None, 0
 
     async def get_found_count(
-        self, start_dt: datetime, end_dt: datetime
-    ) -> Tuple[int, int]:
+        self, start_dt: datetime, end_dt: datetime, extra_params: dict = None
+    ) -> int:
+        """Получает только количество найденных вакансий (found)."""
         params = {
             "date_from": start_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "date_to": end_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "per_page": 0,
         }
-        data, status = await self._request(params)
-        return (data.get("found", 0) if data else 0), status
+        if extra_params:
+            params.update(extra_params)
 
-    async def fetch_page(
-        self, start_dt: datetime, end_dt: datetime, page: int
-    ) -> List[dict]:
+        data, status = await self._request(params)
+        if status == 200 and data:
+            return data.get("found", 0)
+        return 0
+
+    async def generate_tasks(self, start_dt: datetime, end_dt: datetime) -> List[dict]:
+        """
+        Главный алгоритм (The Greedy Walker + Drilling).
+        Возвращает список задач (Task) для скачивания.
+        Task = {'start': dt, 'end': dt, 'params': dict, 'found': int}
+        """
+        tasks = []
+        curr_start = start_dt
+        curr_step = INITIAL_STEP
+
+        # Проверка токена перед стартом
+        if not await self.token_manager.get_token(self.session):
+            return []
+
+        logger.info(f">>> Starting scan: {start_dt} -> {end_dt}")
+
+        while curr_start < end_dt:
+            proposed_end = min(curr_start + curr_step, end_dt)
+            found = await self.get_found_count(curr_start, proposed_end)
+
+            # --- Сценарий 1: Вакансий мало или норма (<= 2000) ---
+            if 0 < found <= MAX_API_DEPTH:
+                # Отличный интервал, берем
+                tasks.append(
+                    {
+                        "start": curr_start,
+                        "end": proposed_end,
+                        "params": {},
+                        "found": found,
+                    }
+                )
+                # Сдвигаем время
+                curr_start = proposed_end + timedelta(seconds=1)
+
+                # Адаптация: если совсем мало вакансий, пробуем увеличить шаг
+                if found < 500 and curr_step < timedelta(days=1):
+                    curr_step *= 2
+
+            # --- Сценарий 2: Много вакансий, но можно дробить время (> 1 мин) ---
+            elif found > MAX_API_DEPTH and curr_step > MIN_STEP:
+                # Уменьшаем шаг в 2 раза и пробуем снова (curr_start не сдвигаем)
+                curr_step /= 2
+                # logger.debug(f"[TIME SPLIT] Found {found} > 2000. Reducing step to {curr_step}")
+                continue
+
+            # --- Сценарий 3: Много вакансий, время дробить нельзя (1 мин). Дробим параметры! ---
+            elif found > MAX_API_DEPTH and curr_step <= MIN_STEP:
+                logger.info(
+                    f"[DRILL DOWN] Interval {curr_start} - {proposed_end} has {found} items. Drilling by params..."
+                )
+                await self._drill_down_by_employment(curr_start, proposed_end, tasks)
+
+                # После успешного дробления сдвигаем время
+                curr_start = proposed_end + timedelta(seconds=1)
+                # Сбрасываем шаг к начальному, так как сложный участок пройден
+                curr_step = INITIAL_STEP
+
+            # --- Сценарий 4: 0 вакансий ---
+            else:
+                curr_start = proposed_end + timedelta(seconds=1)
+                if curr_step < timedelta(days=1):
+                    curr_step *= 2
+
+        logger.info(f">>> Scanning complete. Generated {len(tasks)} tasks.")
+        return tasks
+
+    async def _drill_down_by_employment(
+        self, start: datetime, end: datetime, tasks: list
+    ):
+        """Разбиение по типу занятости (employment_form)."""
+        total_drilled = 0
+
+        for emp in EMPLOYMENT_FORMS:
+            params = {"employment_form": emp}
+            found = await self.get_found_count(start, end, params)
+
+            if found == 0:
+                continue
+
+            if found <= MAX_API_DEPTH:
+                # Ура, разбиение помогло
+                tasks.append(
+                    {"start": start, "end": end, "params": params, "found": found}
+                )
+                total_drilled += found
+            else:
+                # Внутри одного типа занятости все еще > 2000. Дробим глубже.
+                logger.info(
+                    f"  [DEEP DRILL] {emp} has {found} items. Drilling by work_format..."
+                )
+                await self._drill_down_by_work_format(start, end, params, tasks)
+
+    async def _drill_down_by_work_format(
+        self, start: datetime, end: datetime, base_params: dict, tasks: list
+    ):
+        """Разбиение по формату работы (work_format)."""
+        for work in WORK_FORMATS:
+            params = base_params.copy()
+            params["work_format"] = work
+            found = await self.get_found_count(start, end, params)
+
+            if found == 0:
+                continue
+
+            if found > MAX_API_DEPTH:
+                # Крайний случай: 1 минута + Тип занятости + Формат работы > 2000.
+                # Такое практически невозможно, но если случилось — берем CAP (первые 2000).
+                logger.warning(
+                    f"  [CAP LIMIT] Interval {start} with params {params} has {found} items. Capped at 2000."
+                )
+                found = MAX_API_DEPTH
+
+            tasks.append({"start": start, "end": end, "params": params, "found": found})
+
+    async def fetch_page(self, start_dt, end_dt, page, extra_params) -> List[dict]:
+        """Скачивание одной страницы."""
         params = {
             "date_from": start_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "date_to": end_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "per_page": PER_PAGE,
             "page": page,
         }
+        if extra_params:
+            params.update(extra_params)
+
         data, status = await self._request(params)
+
+        # Если 400 — значит мы вышли за пределы пагинации (HH не отдает > 2000)
+        if status == 400:
+            return []
+
         return data.get("items", []) if data else []
 
-    async def generate_intervals(
-        self, start_dt: datetime, end_dt: datetime
-    ) -> List[tuple]:
-        intervals = []
-        curr_start = start_dt
-        curr_step = INITIAL_STEP
+    async def process_task(self, task_meta: dict) -> List[dict]:
+        """Обработка одной задачи из очереди: скачивание всех страниц."""
+        # Рассчитываем кол-во страниц, но не больше 20 (лимит HH)
+        effective_found = min(task_meta["found"], MAX_API_DEPTH)
+        pages = math.ceil(effective_found / PER_PAGE)
 
-        if not await self.token_manager.get_token(self.session):
-            return []
-        logger.info(f"Slicing window: {start_dt} -> {end_dt}")
-
-        while curr_start < end_dt:
-            proposed_end = min(curr_start + curr_step, end_dt)
-            found, status = await self.get_found_count(curr_start, proposed_end)
-            if status not in [200, 404] and found == 0:
-                break  # Error
-
-            if found > MAX_ITEMS_PER_SEARCH:
-                if curr_step <= MIN_STEP:
-                    intervals.append((curr_start, proposed_end, found))
-                    curr_start = proposed_end + timedelta(seconds=1)
-                else:
-                    curr_step /= 2
-            else:
-                if found > 0:
-                    intervals.append((curr_start, proposed_end, found))
-                curr_start = proposed_end + timedelta(seconds=1)
-                if found < 500:
-                    curr_step *= 2
-                elif found > 1500:
-                    curr_step *= 0.8
-                if curr_step > timedelta(days=7):
-                    curr_step = timedelta(days=7)
-        return intervals
-
-    async def process_interval(
-        self, start: datetime, end: datetime, expected_found: int
-    ) -> List[dict]:
-        pages = math.ceil(expected_found / PER_PAGE)
-        tasks = [self.fetch_page(start, end, p) for p in range(pages)]
+        tasks = [
+            self.fetch_page(
+                task_meta["start"], task_meta["end"], p, task_meta["params"]
+            )
+            for p in range(pages)
+        ]
         results = await asyncio.gather(*tasks)
-        return [item for sublist in results for item in sublist]
 
-    # --- НОВЫЙ МЕТОД RUN С БАТЧИНГОМ ---
-    async def run(
-        self,
-        start_dt: datetime,
-        end_dt: datetime,
-        s3_hook: S3Hook,
-        s3_bucket: str,
-        s3_prefix: str,
-    ):
+        # Flatten list
+        items = [item for sublist in results for item in sublist]
+        return items
+
+    # --- MAIN RUNNER ---
+    async def run(self, start_dt, end_dt, s3_hook, s3_bucket, s3_prefix):
         connector = aiohttp.TCPConnector(limit=100)
         async with aiohttp.ClientSession(connector=connector) as session:
             self.session = session
-            intervals = await self.generate_intervals(start_dt, end_dt)
-            if not intervals:
-                logger.warning("No intervals found.")
+
+            # 1. Генерация задач (план выполнения)
+            tasks_queue = await self.generate_tasks(start_dt, end_dt)
+            if not tasks_queue:
+                logger.warning("No tasks generated. Exiting.")
                 return
 
+            # 2. Исполнение (Скачивание)
             buffer = []
-            batch_counter = 1
+            batch_id = 1
             sem = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
-            async def worker(idata):
+            async def worker(t_meta):
                 async with sem:
-                    return await self.process_interval(idata[0], idata[1], idata[2])
+                    return await self.process_task(t_meta)
 
-            logger.info(
-                f"Processing {len(intervals)} intervals with BATCH_SIZE={BATCH_SIZE}..."
-            )
+            logger.info(f"Downloading content via {len(tasks_queue)} tasks...")
 
-            tasks = [worker(i) for i in intervals]
+            worker_futures = [worker(t) for t in tasks_queue]
 
-            # Итерируемся по завершенным задачам
-            for i, coro in enumerate(asyncio.as_completed(tasks)):
+            for i, coro in enumerate(asyncio.as_completed(worker_futures)):
                 items = await coro
                 buffer.extend(items)
 
-                # Если буфер переполнен -> сбрасываем в S3
+                # Сброс батча на диск/S3
                 if len(buffer) >= BATCH_SIZE:
-                    await self._flush_to_s3(
-                        buffer, batch_counter, s3_hook, s3_bucket, s3_prefix
+                    await self._flush_batch(
+                        buffer, batch_id, s3_hook, s3_bucket, s3_prefix
                     )
-                    buffer.clear()  # Очищаем RAM
-                    batch_counter += 1
+                    buffer.clear()
+                    batch_id += 1
 
                 if i > 0 and i % 50 == 0:
-                    logger.info(f"Parsed {i}/{len(intervals)} intervals...")
+                    logger.info(f"Processed {i}/{len(tasks_queue)} download tasks...")
 
-            # Сбрасываем остаток, если есть
+            # Остаток
             if buffer:
-                await self._flush_to_s3(
-                    buffer, batch_counter, s3_hook, s3_bucket, s3_prefix
-                )
+                await self._flush_batch(buffer, batch_id, s3_hook, s3_bucket, s3_prefix)
 
-            logger.info("All batches processed and uploaded.")
+            logger.info("All batches uploaded successfully.")
 
-    async def _flush_to_s3(
-        self,
-        vacancies: List[dict],
-        part_num: int,
-        hook: S3Hook,
-        bucket: str,
-        prefix: str,
+    async def _flush_batch(
+        self, data: List[dict], batch_id: int, hook: S3Hook, bucket: str, prefix: str
     ):
-        """Сжимает данные, пишет в tmp, грузит в S3, удаляет tmp."""
-        filename = f"part_{part_num:03d}.jsonl.gz"
-        local_path = f"/tmp/{filename}"
-        s3_key = f"{prefix}/{filename}"
+        """Сжатие и отправка в S3."""
+        fname = f"part_{batch_id:04d}.jsonl.gz"
+        local_path = f"/tmp/{fname}"
+        s3_key = f"{prefix}/{fname}"
 
-        logger.info(
-            f"Flushing batch {part_num} ({len(vacancies)} items) to {s3_key}..."
-        )
+        logger.info(f"[S3] Flushing batch {batch_id} ({len(data)} items) -> {s3_key}")
 
-        # 1. Сжатие на диск
         with gzip.open(local_path, "wt", encoding="utf-8") as f:
-            for v in vacancies:
+            for v in data:
                 f.write(json.dumps(v, ensure_ascii=False) + "\n")
 
-        # 2. Загрузка в S3 (синхронный вызов внутри async, блокирует поток ненадолго, но это ок для upload)
-        # Для полной асинхронности можно использовать asyncio.to_thread, но S3Hook потокобезопасен
-        hook.load_file(
-            filename=local_path, key=s3_key, bucket_name=bucket, replace=True
-        )
-
-        # 3. Удаление
+        hook.load_file(local_path, key=s3_key, bucket_name=bucket, replace=True)
         os.remove(local_path)
 
 
-# --- TASKFLOW ---
+# --- AIRFLOW TASK ---
 
 
 @task(task_id="fetch_and_upload_batches")
 def fetch_and_upload_batches(logical_date=None):
     if not CLIENT_ID or not CLIENT_SECRET:
-        raise ValueError("Env vars missing")
+        raise ValueError("Environment variables CLIENT_ID or CLIENT_SECRET missing")
 
-    # 1. Работа с датами (UTC -> MSK -> Вчерашние сутки)
+    # 1. Определяем период (Вчерашние сутки по MSK)
     msk_tz = pendulum.timezone("Europe/Moscow")
     run_date_msk = logical_date.in_timezone(msk_tz)
-    end_dt = run_date_msk.start_of("day")  # Сегодня 00:00 MSK
-    start_dt = end_dt.subtract(days=1)  # Вчера 00:00 MSK
+
+    # Конец = начало текущего дня (00:00:00 сегодня)
+    end_dt = run_date_msk.start_of("day")
+    # Начало = минус 1 день (00:00:00 вчера)
+    start_dt = end_dt.subtract(days=1)
 
     date_str = start_dt.strftime("%Y-%m-%d")
     s3_bucket = "bronze"
     s3_prefix = f"hh/vacancies/date={date_str}"
 
-    logger.info(f"Job for: {start_dt} -> {end_dt}")
-    logger.info(f"Target S3: s3://{s3_bucket}/{s3_prefix}/")
+    logger.info(f"Job Period (MSK): {start_dt} -> {end_dt}")
+    logger.info(f"Target: s3://{s3_bucket}/{s3_prefix}")
 
-    # 2. Идемпотентность: Очищаем префикс перед стартом
-    s3_hook = S3Hook(aws_conn_id="aws_default")
+    # 2. Идемпотентность (чистим папку перед загрузкой)
+    s3 = S3Hook(aws_conn_id="aws_default")
+    if not s3.check_for_bucket(s3_bucket):
+        s3.create_bucket(s3_bucket)
 
-    # Создаем бакет если нет
-    if not s3_hook.check_for_bucket(s3_bucket):
-        s3_hook.create_bucket(s3_bucket)
-
-    # Удаляем старые файлы (если был рестарт)
-    keys_to_delete = s3_hook.list_keys(bucket_name=s3_bucket, prefix=s3_prefix)
-    if keys_to_delete:
-        logger.info(f"Cleaning up {len(keys_to_delete)} old files in {s3_prefix}...")
-        s3_hook.delete_objects(bucket=s3_bucket, keys=keys_to_delete)
+    existing_keys = s3.list_keys(bucket_name=s3_bucket, prefix=s3_prefix)
+    if existing_keys:
+        logger.info(f"Cleaning {len(existing_keys)} old files...")
+        s3.delete_objects(bucket=s3_bucket, keys=existing_keys)
 
     # 3. Запуск
     loader = VacancyLoader(CLIENT_ID, CLIENT_SECRET)
-    # Передаем хук внутрь, чтобы лоадер сам управлял батчами
-    asyncio.run(loader.run(start_dt, end_dt, s3_hook, s3_bucket, s3_prefix))
+    asyncio.run(loader.run(start_dt, end_dt, s3, s3_bucket, s3_prefix))
 
 
 @dag(
-    dag_id="bronze_hh_loader_chunked",
-    schedule="0 0 * * *",
+    dag_id="bronze_hh_loader_v3",
+    description="Loads raw HH.ru vacancies (Bronze) with advanced param drilling",
+    schedule="0 0 * * *",  # 00:00 UTC Daily
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    tags=["bronze", "hh", "etl", "chunked"],
+    tags=["bronze", "hh", "etl", "v3"],
 )
 def bronze_hh_loader_dag():
     fetch_and_upload_batches()
