@@ -23,7 +23,7 @@ import math
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import aiohttp
 import pendulum
@@ -76,14 +76,33 @@ logger = logging.getLogger("airflow.task")
 
 # --- МЕНЕДЖЕР ТОКЕНОВ ---
 class TokenManager:
-    """Отвечает за получение, кеширование и обновление токена через Airflow Variables."""
+    """
+    Отвечает за получение, кеширование и обновление токена через Airflow Variables.
 
-    def __init__(self, client_id: str, client_secret: str):
+    Attributes:
+        client_id (str): Идентификатор клиента HH.ru.
+        client_secret (str): Секретный ключ клиента HH.ru.
+        _memory_token (Optional[str]): Закешированный токен в памяти процесса.
+    """
+
+    def __init__(self, client_id: str, client_secret: str) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
-        self._memory_token = None
+        self._memory_token: Optional[str] = None
 
-    async def get_token(self, session: aiohttp.ClientSession) -> str:
+    async def get_token(self, session: aiohttp.ClientSession) -> Optional[str]:
+        """
+        Получает валидный токен доступа.
+
+        Сначала проверяет кеш в памяти, затем Airflow Variables,
+        и если токена нет или он истек — запрашивает новый у API.
+
+        Args:
+            session (aiohttp.ClientSession): Сессия для выполнения запросов.
+
+        Returns:
+            Optional[str]: Токен доступа или None в случае ошибки.
+        """
         # 1. Проверяем память (самый быстрый путь)
         if self._memory_token:
             return self._memory_token
@@ -99,17 +118,36 @@ class TokenManager:
         # 3. Обновляем через API
         return await self._refresh_token(session)
 
-    def invalidate_token(self):
+    def invalidate_token(self) -> None:
         """Сброс токена при ошибках 401/403."""
         logger.warning("[AUTH] Invalidating token...")
         self._memory_token = None
+        # Удаляем переменную, чтобы другие воркеры тоже обновили токен
         Variable.delete(AIRFLOW_VAR_TOKEN_KEY)
 
     def _is_valid(self, token_info: dict) -> bool:
+        """
+        Проверяет валидность токена по времени истечения.
+
+        Args:
+            token_info (dict): Словарь с информацией о токене.
+
+        Returns:
+            bool: True, если токен валиден еще минимум 5 минут.
+        """
         # Валиден, если до истечения осталось больше 5 минут
         return time.time() < (token_info.get("expires_at", 0) - 300)
 
     async def _refresh_token(self, session: aiohttp.ClientSession) -> Optional[str]:
+        """
+        Запрашивает новый токен у API HH.ru.
+
+        Args:
+            session (aiohttp.ClientSession): Сессия для запроса.
+
+        Returns:
+            Optional[str]: Новый токен доступа или None.
+        """
         payload = {
             "grant_type": "client_credentials",
             "client_id": self.client_id,
@@ -145,13 +183,39 @@ class TokenManager:
 
 # --- ЗАГРУЗЧИК ВАКАНСИЙ ---
 class VacancyLoader:
-    def __init__(self, client_id: str, client_secret: str):
+    """
+    Класс для загрузки вакансий с API HH.ru с использованием стратегии "Drill Down".
+
+    Позволяет обходить ограничение API на выдачу макс. 2000 записей путем
+    дробления запросов по времени и параметрам фильтрации.
+
+    Attributes:
+        limiter (AsyncLimiter): Ограничитель скорости запросов.
+        session (Optional[aiohttp.ClientSession]): Сессия aiohttp.
+        token_manager (TokenManager): Менеджер токенов.
+    """
+
+    def __init__(self, client_id: str, client_secret: str) -> None:
         self.limiter = AsyncLimiter(RATE_LIMIT, time_period=1)
-        self.session = None
+        self.session: Optional[aiohttp.ClientSession] = None
         self.token_manager = TokenManager(client_id, client_secret)
 
     async def _request(self, params: dict) -> Tuple[Optional[dict], int]:
-        """Базовый метод запроса с ретраями и обработкой ошибок."""
+        """
+        Базовый метод запроса с ретраями и обработкой ошибок.
+
+        Автоматически обновляет токен при ошибках авторизации и соблюдает Rate Limit.
+
+        Args:
+            params (dict): Параметры GET-запроса.
+
+        Returns:
+            Tuple[Optional[dict], int]: JSON-ответ (или None) и HTTP-статус.
+        """
+        if self.session is None:
+            logger.error("Session not initialized")
+            return None, 500
+
         url = API_URL
         delay = INITIAL_BACKOFF
 
@@ -203,9 +267,21 @@ class VacancyLoader:
         return None, 0
 
     async def get_found_count(
-        self, start_dt: datetime, end_dt: datetime, extra_params: dict = None
+        self, start_dt: datetime, end_dt: datetime, extra_params: Optional[dict] = None
     ) -> int:
-        """Получает только количество найденных вакансий (found)."""
+        """
+        Получает только количество найденных вакансий (found).
+
+        Используется для оценки плотности вакансий в интервале.
+
+        Args:
+            start_dt (datetime): Начало интервала.
+            end_dt (datetime): Конец интервала.
+            extra_params (Optional[dict]): Дополнительные фильтры (занятость, формат).
+
+        Returns:
+            int: Количество найденных вакансий.
+        """
         params = {
             "date_from": start_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "date_to": end_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -222,20 +298,42 @@ class VacancyLoader:
     async def generate_tasks(self, start_dt: datetime, end_dt: datetime) -> List[dict]:
         """
         Главный алгоритм (The Greedy Walker + Drilling).
-        Возвращает список задач (Task) для скачивания.
-        Task = {'start': dt, 'end': dt, 'params': dict, 'found': int}
+
+        Сканирует временной диапазон и разбивает его на задачи (Task), чтобы
+        в каждой задаче было <= 2000 вакансий. Если время дробить нельзя (1 минута),
+        применяет фильтры по Employment и Work Format.
+
+        Args:
+            start_dt (datetime): Общее начало периода.
+            end_dt (datetime): Общий конец периода.
+
+        Returns:
+            List[dict]: Список задач для скачивания.
+            Task = {'start': dt, 'end': dt, 'params': dict, 'found': int}
         """
         tasks = []
         curr_start = start_dt
         curr_step = INITIAL_STEP
+
+        if self.session is None:
+            logger.error("Session not initialized")
+            return []
 
         # Проверка токена перед стартом
         if not await self.token_manager.get_token(self.session):
             return []
 
         logger.info(f">>> Starting scan: {start_dt} -> {end_dt}")
+        last_log_time = time.time()
 
         while curr_start < end_dt:
+            # Логирование прогресса раз в 10 секунд
+            if time.time() - last_log_time > 10:
+                logger.info(
+                    f"[SCANNER] Progress: {curr_start} / {end_dt}. Generated {len(tasks)} tasks so far."
+                )
+                last_log_time = time.time()
+
             proposed_end = min(curr_start + curr_step, end_dt)
             found = await self.get_found_count(curr_start, proposed_end)
 
@@ -286,9 +384,16 @@ class VacancyLoader:
         return tasks
 
     async def _drill_down_by_employment(
-        self, start: datetime, end: datetime, tasks: list
-    ):
-        """Разбиение по типу занятости (employment_form)."""
+        self, start: datetime, end: datetime, tasks: List[dict]
+    ) -> None:
+        """
+        Разбиение по типу занятости (employment_form).
+
+        Args:
+            start (datetime): Начало интервала.
+            end (datetime): Конец интервала.
+            tasks (List[dict]): Список задач для наполнения.
+        """
         total_drilled = 0
 
         for emp in EMPLOYMENT_FORMS:
@@ -312,9 +417,17 @@ class VacancyLoader:
                 await self._drill_down_by_work_format(start, end, params, tasks)
 
     async def _drill_down_by_work_format(
-        self, start: datetime, end: datetime, base_params: dict, tasks: list
-    ):
-        """Разбиение по формату работы (work_format)."""
+        self, start: datetime, end: datetime, base_params: dict, tasks: List[dict]
+    ) -> None:
+        """
+        Разбиение по формату работы (work_format).
+
+        Args:
+            start (datetime): Начало интервала.
+            end (datetime): Конец интервала.
+            base_params (dict): Параметры из верхнего уровня (employment_form).
+            tasks (List[dict]): Список задач для наполнения.
+        """
         for work in WORK_FORMATS:
             params = base_params.copy()
             params["work_format"] = work
@@ -333,8 +446,21 @@ class VacancyLoader:
 
             tasks.append({"start": start, "end": end, "params": params, "found": found})
 
-    async def fetch_page(self, start_dt, end_dt, page, extra_params) -> List[dict]:
-        """Скачивание одной страницы."""
+    async def fetch_page(
+        self, start_dt: datetime, end_dt: datetime, page: int, extra_params: dict
+    ) -> List[dict]:
+        """
+        Скачивание одной страницы результатов.
+
+        Args:
+            start_dt (datetime): Начало интервала.
+            end_dt (datetime): Конец интервала.
+            page (int): Номер страницы (0-19).
+            extra_params (dict): Доп. параметры фильтрации.
+
+        Returns:
+            List[dict]: Список вакансий (items) со страницы.
+        """
         params = {
             "date_from": start_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "date_to": end_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -354,7 +480,15 @@ class VacancyLoader:
         return data.get("items", []) if data else []
 
     async def process_task(self, task_meta: dict) -> List[dict]:
-        """Обработка одной задачи из очереди: скачивание всех страниц."""
+        """
+        Обработка одной задачи из очереди: скачивание всех страниц.
+
+        Args:
+            task_meta (dict): Метаданные задачи (start, end, params, found).
+
+        Returns:
+            List[dict]: Список всех вакансий для этой задачи.
+        """
         # Рассчитываем кол-во страниц, но не больше 20 (лимит HH)
         effective_found = min(task_meta["found"], MAX_API_DEPTH)
         pages = math.ceil(effective_found / PER_PAGE)
@@ -372,7 +506,24 @@ class VacancyLoader:
         return items
 
     # --- MAIN RUNNER ---
-    async def run(self, start_dt, end_dt, s3_hook, s3_bucket, s3_prefix):
+    async def run(
+        self,
+        start_dt: datetime,
+        end_dt: datetime,
+        s3_hook: S3Hook,
+        s3_bucket: str,
+        s3_prefix: str,
+    ) -> None:
+        """
+        Основной метод запуска: генерация задач, скачивание и загрузка в S3.
+
+        Args:
+            start_dt (datetime): Начало периода.
+            end_dt (datetime): Конец периода.
+            s3_hook (S3Hook): Хук Airflow для работы с S3.
+            s3_bucket (str): Имя бакета.
+            s3_prefix (str): Префикс пути в бакете.
+        """
         connector = aiohttp.TCPConnector(limit=100)
         async with aiohttp.ClientSession(connector=connector) as session:
             self.session = session
@@ -387,12 +538,13 @@ class VacancyLoader:
             buffer = []
             batch_id = 1
             sem = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
+            total_tasks = len(tasks_queue)
 
-            async def worker(t_meta):
+            async def worker(t_meta: dict) -> List[dict]:
                 async with sem:
                     return await self.process_task(t_meta)
 
-            logger.info(f"Downloading content via {len(tasks_queue)} tasks...")
+            logger.info(f"Downloading content via {total_tasks} tasks...")
 
             worker_futures = [worker(t) for t in tasks_queue]
 
@@ -409,7 +561,10 @@ class VacancyLoader:
                     batch_id += 1
 
                 if i > 0 and i % 50 == 0:
-                    logger.info(f"Processed {i}/{len(tasks_queue)} download tasks...")
+                    percent = (i / total_tasks) * 100
+                    logger.info(
+                        f"Processed {i}/{total_tasks} ({percent:.1f}%) download tasks..."
+                    )
 
             # Остаток
             if buffer:
@@ -419,8 +574,17 @@ class VacancyLoader:
 
     async def _flush_batch(
         self, data: List[dict], batch_id: int, hook: S3Hook, bucket: str, prefix: str
-    ):
-        """Сжатие и отправка в S3."""
+    ) -> None:
+        """
+        Сжатие и отправка в S3.
+
+        Args:
+            data (List[dict]): Список вакансий для сохранения.
+            batch_id (int): Номер батча.
+            hook (S3Hook): Хук S3.
+            bucket (str): Бакет.
+            prefix (str): Префикс пути.
+        """
         fname = f"part_{batch_id:04d}.jsonl.gz"
         local_path = f"/tmp/{fname}"
         s3_key = f"{prefix}/{fname}"
@@ -439,13 +603,17 @@ class VacancyLoader:
 
 
 @task(task_id="fetch_and_upload_batches")
-def fetch_and_upload_batches(logical_date=None):
+def fetch_and_upload_batches(logical_date=None) -> None:
     if not CLIENT_ID or not CLIENT_SECRET:
         raise ValueError("Environment variables CLIENT_ID or CLIENT_SECRET missing")
 
     # 1. Определяем период (Вчерашние сутки по MSK)
     msk_tz = pendulum.timezone("Europe/Moscow")
-    run_date_msk = logical_date.in_timezone(msk_tz)
+
+    if logical_date is None:
+        run_date_msk = pendulum.now(msk_tz)
+    else:
+        run_date_msk = logical_date.in_timezone(msk_tz)
 
     # Конец = начало текущего дня (00:00:00 сегодня)
     end_dt = run_date_msk.start_of("day")
