@@ -340,6 +340,7 @@ class VacancyLoader:
             "date_to": end_dt.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "per_page": PER_PAGE,
             "page": page,
+            "order_by": "publication_time",
         }
         if extra_params:
             params.update(extra_params)
