@@ -1,305 +1,137 @@
 """
-### Silver Layer: HH.ru Vacancies Processor
+### Silver Layer: HH.ru Vacancies Processor (DuckDB Engine)
 
 DAG обрабатывает сырые данные (Bronze) за конкретную дату и формирует Silver слой.
 
-Особенности архитектуры:
-- **Partitioning Strategy:** Используется "Batch Date" (дата выгрузки по MSK).
-  Это решает проблему часовых поясов (когда 00:00 MSK = 21:00 UTC предыдущего дня).
-  Все данные из одного Bronze-файла гарантированно попадают в одну Silver-партицию.
-- **Idempotency:** Перед записью целевая партиция полностью очищается.
-- **Schema Evolution:** Перед чтением проверяется дрифт схемы на сэмпле данных.
+Движок: **DuckDB**
+Преимущества перед Polars в этом кейсе:
+1. **Out-of-Core Processing:** Умеет сбрасывать данные на диск при нехватке RAM (решение OOM).
+2. **Robust JSON Reader:** read_json_auto отлично справляется с вложенными структурами и schema evolution.
+3. **SQL Expressiveness:** Удобный синтаксис (EXCLUDE, QUALIFY) для трансформаций.
+
+Логика:
+1. Читает ВСЕ файлы из Bronze за переданную дату.
+2. Дедуплицирует (по id) используя Window Functions.
+3. Конвертирует типы и даты.
+4. Пишет результат в локальный Parquet -> Грузит в S3.
 """
 
 import logging
 import os
+import shutil
+import uuid
 from datetime import datetime, timedelta
 
-import polars as pl
+import duckdb
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
 
 # --- КОНФИГУРАЦИЯ ---
-S3_ENDPOINT = os.getenv("AWS_ENDPOINT_URL")
-ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-
-print(S3_ENDPOINT, ACCESS_KEY, SECRET_KEY)
+S3_ENDPOINT = os.getenv("AWS_ENDPOINT_URL", "http://minio:9000")
+ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
+SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 
 BUCKET_BRONZE = "bronze"
 BUCKET_SILVER = "silver"
 
 logger = logging.getLogger("airflow.task")
 
-storage_options = {
-    "aws_endpoint_url": S3_ENDPOINT,
-    "aws_access_key_id": ACCESS_KEY,
-    "aws_secret_access_key": SECRET_KEY,
-    "aws_region": "us-east-1",
-    "aws_allow_http": "true",
-}
-
-# --- MASTER SCHEMA ---
-FULL_SCHEMA = pl.Schema(
-    {
-        "is_adv_vacancy": pl.Boolean,
-        "internship": pl.Boolean,
-        "department": pl.Struct({"id": pl.String, "name": pl.String}),
-        "working_time_intervals": pl.List(
-            pl.Struct({"id": pl.String, "name": pl.String})
-        ),
-        "show_contacts": pl.Boolean,
-        "salary": pl.Struct(
-            {
-                "from": pl.Int64,
-                "to": pl.Int64,
-                "currency": pl.String,
-                "gross": pl.Boolean,
-            }
-        ),
-        "apply_alternate_url": pl.String,
-        "created_at": pl.String,
-        "work_format": pl.List(pl.Struct({"id": pl.String, "name": pl.String})),
-        "response_url": pl.String,
-        "response_letter_required": pl.Boolean,
-        "relations": pl.List(pl.Null),
-        "professional_roles": pl.List(pl.Struct({"id": pl.String, "name": pl.String})),
-        "accept_incomplete_resumes": pl.Boolean,
-        "premium": pl.Boolean,
-        "has_test": pl.Boolean,
-        "contacts": pl.Struct(
-            {"name": pl.Null, "email": pl.Null, "phones": pl.List(pl.Null)}
-        ),
-        "employment": pl.Struct({"id": pl.String, "name": pl.String}),
-        "employment_form": pl.Struct({"id": pl.String, "name": pl.String}),
-        "adv_context": pl.Null,
-        "sort_point_distance": pl.Null,
-        "name": pl.String,
-        "address": pl.Struct(
-            {
-                "city": pl.String,
-                "street": pl.String,
-                "building": pl.String,
-                "lat": pl.Float64,
-                "lng": pl.Float64,
-                "description": pl.Null,
-                "raw": pl.String,
-                "metro": pl.Struct(
-                    {
-                        "station_name": pl.String,
-                        "line_name": pl.String,
-                        "station_id": pl.String,
-                        "line_id": pl.String,
-                        "lat": pl.Float64,
-                        "lng": pl.Float64,
-                    }
-                ),
-                "metro_stations": pl.List(
-                    pl.Struct(
-                        {
-                            "station_name": pl.String,
-                            "line_name": pl.String,
-                            "station_id": pl.String,
-                            "line_id": pl.String,
-                            "lat": pl.Float64,
-                            "lng": pl.Float64,
-                        }
-                    )
-                ),
-                "id": pl.String,
-            }
-        ),
-        "branding": pl.Struct({"type": pl.String, "tariff": pl.String}),
-        "insider_interview": pl.Struct({"id": pl.String, "url": pl.String}),
-        "working_days": pl.List(pl.Struct({"id": pl.String, "name": pl.String})),
-        "fly_in_fly_out_duration": pl.List(
-            pl.Struct({"id": pl.String, "name": pl.String})
-        ),
-        "url": pl.String,
-        "employer": pl.Struct(
-            {
-                "id": pl.String,
-                "name": pl.String,
-                "url": pl.String,
-                "alternate_url": pl.String,
-                "logo_urls": pl.Struct(
-                    {"original": pl.String, "90": pl.String, "240": pl.String}
-                ),
-                "vacancies_url": pl.String,
-                "country_id": pl.Int64,
-                "accredited_it_employer": pl.Boolean,
-                "trusted": pl.Boolean,
-            }
-        ),
-        "accept_temporary": pl.Boolean,
-        "published_at": pl.String,
-        "salary_range": pl.Struct(
-            {
-                "from": pl.Int64,
-                "to": pl.Int64,
-                "currency": pl.String,
-                "gross": pl.Boolean,
-                "mode": pl.Struct({"id": pl.String, "name": pl.String}),
-                "frequency": pl.Struct({"id": pl.String, "name": pl.String}),
-            }
-        ),
-        "work_schedule_by_days": pl.List(
-            pl.Struct({"id": pl.String, "name": pl.String})
-        ),
-        "id": pl.String,
-        "show_logo_in_search": pl.Boolean,
-        "type": pl.Struct({"id": pl.String, "name": pl.String}),
-        "experience": pl.Struct({"id": pl.String, "name": pl.String}),
-        "area": pl.Struct({"id": pl.String, "name": pl.String, "url": pl.String}),
-        "archived": pl.Boolean,
-        "working_time_modes": pl.List(pl.Struct({"id": pl.String, "name": pl.String})),
-        "alternate_url": pl.String,
-        "snippet": pl.Struct({"requirement": pl.String, "responsibility": pl.String}),
-        "schedule": pl.Struct({"id": pl.String, "name": pl.String}),
-        "night_shifts": pl.Boolean,
-        "working_hours": pl.List(pl.Struct({"id": pl.String, "name": pl.String})),
-        "adv_response_url": pl.Null,
-        "video_vacancy": pl.Struct(
-            {
-                "cover_picture": pl.Struct(
-                    {
-                        "resized_path": pl.String,
-                        "resized_width": pl.Int64,
-                        "resized_height": pl.Int64,
-                    }
-                ),
-                "snippet_picture": pl.Struct({"url": pl.String}),
-                "video": pl.Struct({"upload_id": pl.String, "url": pl.String}),
-                "snippet_video": pl.Struct({"upload_id": pl.String, "url": pl.String}),
-                "video_url": pl.String,
-                "snippet_video_url": pl.String,
-                "snippet_picture_url": pl.String,
-            }
-        ),
-        "brand_snippet": pl.Struct(
-            {
-                "logo": pl.Null,
-                "logo_xs": pl.Null,
-                "logo_scalable": pl.Struct(
-                    {
-                        "default": pl.Struct(
-                            {"width": pl.Int64, "height": pl.Int64, "url": pl.String}
-                        ),
-                        "xs": pl.Struct(
-                            {"width": pl.Int64, "height": pl.Int64, "url": pl.String}
-                        ),
-                    }
-                ),
-                "picture": pl.Null,
-                "picture_xs": pl.Null,
-                "picture_scalable": pl.Struct(
-                    {
-                        "default": pl.Struct(
-                            {"width": pl.Int64, "height": pl.Int64, "url": pl.String}
-                        ),
-                        "xs": pl.Struct(
-                            {"width": pl.Int64, "height": pl.Int64, "url": pl.String}
-                        ),
-                    }
-                ),
-                "background": pl.Struct(
-                    {
-                        "color": pl.String,
-                        "gradient": pl.Struct(
-                            {
-                                "angle": pl.Float64,
-                                "color_list": pl.List(
-                                    pl.Struct(
-                                        {"color": pl.String, "position": pl.Float64}
-                                    )
-                                ),
-                            }
-                        ),
-                    }
-                ),
-            }
-        ),
-        "immediate_redirect_url": pl.String,
-    }
-)
+# --- ФУНКЦИИ ---
 
 
-def check_drift_on_sample(s3_path_glob: str):
-    """Проверка дрифта схемы на сэмпле."""
+def setup_duckdb(db_path=":memory:", memory_limit="2GB"):
+    """Инициализация DuckDB с поддержкой S3 (httpfs)."""
+    con = duckdb.connect(db_path)
+
+    # Установка расширений (обычно встроены, но на всякий случай)
+    con.execute("INSTALL httpfs; LOAD httpfs;")
+
+    # Настройка S3
+    # Важно: path_style access нужен для MinIO
+    con.execute(f"SET s3_endpoint='{S3_ENDPOINT.replace('http://', '')}';")
+    con.execute(f"SET s3_access_key_id='{ACCESS_KEY}';")
+    con.execute(f"SET s3_secret_access_key='{SECRET_KEY}';")
+    con.execute("SET s3_use_ssl=false;")
+    con.execute("SET s3_url_style='path';")
+
+    # Настройка памяти и потоков
+    # Ограничиваем память, чтобы не получить OOM от OS. Остальное уйдет в /tmp
+    con.execute(f"SET memory_limit='{memory_limit}';")
+    # con.execute("SET threads=4;") # Можно настроить под воркер
+
+    return con
+
+
+def get_bronze_schema_columns(con, s3_path_glob):
+    """
+    Легкая проверка схемы (Drift Check).
+    Читает 1 строку, чтобы понять, какие колонки видит DuckDB.
+    """
     try:
-        sample_df = pl.read_ndjson(
-            s3_path_glob,
-            n_rows=1000,
-            storage_options=storage_options,
-            ignore_errors=True,
-            infer_schema_length=1000,
-        )
-        new_cols = set(sample_df.columns) - set(FULL_SCHEMA.names())
-        if new_cols:
-            logger.warning(f"⚠️ SCHEMA DRIFT DETECTED! New columns: {new_cols}")
-        else:
-            logger.info("Schema integrity check passed.")
+        # DESCRIBE возвращает структуру таблицы
+        # read_json_auto сам выведет схему
+        query = f"DESCRIBE SELECT * FROM read_json_auto('{s3_path_glob}', ignore_errors=true) LIMIT 1"
+        schema_info = con.execute(query).fetchall()
+        columns = [row[0] for row in schema_info]
+        return set(columns)
     except Exception as e:
-        logger.warning(f"Could not perform drift check: {e}")
+        logger.warning(f"Could not infer schema: {e}")
+        return set()
 
 
-def calculate_dq_metrics(df_lazy: pl.LazyFrame):
-    """Расчет метрик качества."""
-    metrics_exprs = [
-        pl.len().alias("row_count"),
-        (pl.col("salary").struct.field("from").null_count() / pl.len()).alias(
-            "salary_null_ratio"
-        ),
-        (pl.col("employer").struct.field("id").null_count() / pl.len()).alias(
-            "employer_id_null_ratio"
-        ),
-        pl.col("published_at_utc").min().alias("min_published_at"),
-        pl.col("published_at_utc").max().alias("max_published_at"),
-    ]
+def calculate_dq_metrics(con, table_name="silver_view"):
+    """Считает метрики качества прямо внутри DuckDB."""
     try:
-        metrics = df_lazy.select(metrics_exprs).collect().to_dicts()[0]
-        logger.info("--- DQ METRICS ---")
-        logger.info(f"Rows: {metrics['row_count']}")
-        logger.info(f"Salary Nulls: {metrics['salary_null_ratio']:.2%}")
-        logger.info(
-            f"Date Range: {metrics['min_published_at']} - {metrics['max_published_at']}"
-        )
-        logger.info("------------------")
+        query = f"""
+        SELECT
+            count(*) as row_count,
+            -- Проверяем заполненность (Completeness)
+            count(salary) FILTER (WHERE salary IS NULL) / count(*)::DOUBLE as salary_null_rate,
+            count(employer) FILTER (WHERE employer IS NULL) / count(*)::DOUBLE as employer_null_rate,
+
+            -- Проверяем даты (Timeliness)
+            min(published_at_utc) as min_date,
+            max(published_at_utc) as max_date
+        FROM {table_name}
+        """
+        metrics = con.execute(query).fetchone()
+        logger.info("--- DQ METRICS (DuckDB) ---")
+        logger.info(f"Rows: {metrics[0]}")
+        logger.info(f"Salary Null Rate: {metrics[1]:.2%}")
+        logger.info(f"Date Range: {metrics[3]} - {metrics[4]}")
+        logger.info("---------------------------")
     except Exception as e:
         logger.error(f"DQ Metrics failed: {e}")
 
 
 @task(task_id="process_bronze_to_silver")
 def process_bronze_to_silver(logical_date=None):
-    import uuid
-
     import pendulum
 
-    # 1. Настройка дат
+    # 1. Определяем target_date (Batch Date)
     msk_tz = pendulum.timezone("Europe/Moscow")
     run_date_msk = logical_date.in_timezone(msk_tz)
     target_date = run_date_msk.start_of("day").subtract(days=1)
     date_str = target_date.strftime("%Y-%m-%d")
 
     # Пути
-    bronze_path = f"s3://{BUCKET_BRONZE}/hh/vacancies/date={date_str}/*.jsonl.gz"
+    bronze_glob = f"s3://{BUCKET_BRONZE}/hh/vacancies/date={date_str}/*.jsonl.gz"
 
-    # Формируем путь партиции ВРУЧНУЮ (год/месяц/день)
-    # Это позволяет избежать использования PartitionByKey
+    # Hive-style partitioning path для S3
     partition_suffix = (
         f"year={target_date.year}/month={target_date.month}/day={target_date.day}"
     )
     silver_prefix = f"hh/vacancies/{partition_suffix}"
 
-    # Локальный временный файл (Safe Mode)
+    # Временный локальный файл
     local_filename = f"part-{uuid.uuid4()}.parquet"
     local_path = f"/tmp/{local_filename}"
 
     logger.info(f"Processing Batch: {date_str}")
-    logger.info(f"Source: {bronze_path}")
+    logger.info(f"Source: {bronze_glob}")
 
-    # 2. Очистка S3 (Идемпотентность)
+    # 2. Очистка S3 (Idempotency)
     s3_hook = S3Hook(aws_conn_id="aws_default")
     if s3_hook.check_for_bucket(BUCKET_SILVER):
         keys = s3_hook.list_keys(BUCKET_SILVER, prefix=silver_prefix)
@@ -309,105 +141,117 @@ def process_bronze_to_silver(logical_date=None):
     else:
         s3_hook.create_bucket(BUCKET_SILVER)
 
-    # 3. Drift Check (Оставляем как было)
-    check_drift_on_sample(bronze_path)
+    # 3. DuckDB Processing
+    con = setup_duckdb()
 
-    # 4. Lazy Reading
     try:
-        df_lazy = pl.scan_ndjson(
-            bronze_path,
-            schema=FULL_SCHEMA,
-            storage_options=storage_options,
-            ignore_errors=True,
+        # --- A. Drift Check ---
+        # Просто логируем, какие колонки мы нашли.
+        # Если в будущем захотим strict check, можно сравнить с эталонным списком.
+        detected_cols = get_bronze_schema_columns(con, bronze_glob)
+        logger.info(f"Detected {len(detected_cols)} columns in source files.")
+
+        # --- B. Transformation Query ---
+        # Используем мощь DuckDB 1.x
+        logger.info("Executing DuckDB Transformation...")
+
+        # 1. Читаем JSON (read_json_auto очень быстр)
+        # 2. QUALIFY - дедупликация "на лету" без джойнов
+        # 3. EXCLUDE - убираем лишние колонки
+        # 4. Вычисляем смещения дат
+
+        transform_query = f"""
+        COPY (
+            WITH raw_data AS (
+                SELECT *
+                FROM read_json_auto(
+                    '{bronze_glob}',
+                    ignore_errors=true,
+                    union_by_name=true,  -- Склеивает файлы даже если где-то нет полей
+                    filename=false       -- Не добавлять имя файла
+                )
+            ),
+            deduplicated AS (
+                SELECT *
+                FROM raw_data
+                WHERE id IS NOT NULL
+                -- Оставляем последнюю версию вакансии по дате публикации
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY published_at DESC) = 1
+            ),
+            enriched AS (
+                SELECT
+                    -- Оставляем все поля, КРОМЕ сырых дат
+                    * EXCLUDE (published_at, created_at),
+
+                    -- Конвертация дат в UTC (TIMESTAMPTZ -> UTC -> TIMESTAMP)
+                    (published_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP as published_at_utc,
+                    (created_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP as created_at_utc,
+
+                    -- Вычисляем Offset (разница между строкой и UTC временем)
+                    -- Попытка распарсить строку 'YYYY-MM-DDTHH:MM:SS+0300' как timestamp
+                    -- DuckDB date_diff('minute', start, end)
+                    date_diff('minute',
+                              (published_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
+                              published_at::TIMESTAMP -- Wall Clock Time
+                    )::SMALLINT as published_at_offset,
+
+                    date_diff('minute',
+                              (created_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
+                              created_at::TIMESTAMP
+                    )::SMALLINT as created_at_offset
+
+                FROM deduplicated
+            )
+            SELECT * FROM enriched
+        ) TO '{local_path}' (FORMAT 'PARQUET', COMPRESSION 'ZSTD', ROW_GROUP_SIZE 100000);
+        """
+
+        # Запускаем монстра
+        con.execute(transform_query)
+        logger.info(f"Transformation complete. File saved to {local_path}")
+
+        # --- C. DQ Metrics (Optional) ---
+        # Считаем метрики уже по готовому Parquet файлу (это очень быстро)
+        # Создаем view поверх файла
+        con.execute(
+            f"CREATE OR REPLACE VIEW metrics_view AS SELECT * FROM parquet_scan('{local_path}')"
         )
+        calculate_dq_metrics(con, "metrics_view")
+
     except Exception as e:
-        logger.error(f"Failed to read bronze: {e}")
-        return
+        logger.error(f"DuckDB execution failed: {e}")
+        # Если упало, чистим и пробрасываем ошибку
+        if os.path.exists(local_path):
+            os.remove(local_path)
+        raise e
+    finally:
+        con.close()
 
-    # 5. Transformations
-    df_transformed = (
-        df_lazy.filter(pl.col("id").is_not_null())
-        # ВАЖНО: Если OOM продолжится, unique() придется убрать или делать стриминг сложнее.
-        # maintain_order=False экономит память
-        .unique(subset="id", keep="any", maintain_order=False)
-        .with_columns(
-            [
-                pl.col("published_at")
-                .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
-                .dt.convert_time_zone("UTC")
-                .alias("published_at_utc"),
-                pl.col("created_at")
-                .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
-                .dt.convert_time_zone("UTC")
-                .alias("created_at_utc"),
-                pl.col("published_at")
-                .str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
-                .alias("published_at_wc"),
-                pl.col("created_at")
-                .str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
-                .alias("created_at_wc"),
-            ]
+    # 4. Upload to S3
+    # Проверяем, что файл не пустой
+    if os.path.getsize(local_path) < 100:
+        logger.warning("Resulting parquet file is empty or too small!")
+    else:
+        s3_key = f"{silver_prefix}/{local_filename}"
+        logger.info(f"Uploading to S3: s3://{BUCKET_SILVER}/{s3_key}")
+
+        s3_hook.load_file(
+            filename=local_path, key=s3_key, bucket_name=BUCKET_SILVER, replace=True
         )
-        .with_columns(
-            [
-                (
-                    (
-                        pl.col("published_at_wc")
-                        - pl.col("published_at_utc").dt.replace_time_zone(None)
-                    )
-                    .dt.total_minutes()
-                    .cast(pl.Int16)
-                    .alias("published_at_offset")
-                ),
-                (
-                    (
-                        pl.col("created_at_wc")
-                        - pl.col("created_at_utc").dt.replace_time_zone(None)
-                    )
-                    .dt.total_minutes()
-                    .cast(pl.Int16)
-                    .alias("created_at_offset")
-                ),
-            ]
-        )
-        .drop(["published_at", "created_at", "published_at_wc", "created_at_wc"])
-    )
 
-    # 6. DQ Metrics (Collect - отдельный проход)
-    # Если падает по OOM здесь -> закомментируйте временно
-    try:
-        calculate_dq_metrics(df_transformed)
-    except Exception as e:
-        logger.warning(f"Skipping DQ due to error: {e}")
-
-    # 7. Write to LOCAL Disk (Спасение от OOM)
-    logger.info(f"Streaming transformation to local file: {local_path}...")
-
-    # sink_parquet в локальный файл работает супер-стабильно
-    # df_transformed.sink_parquet(local_path, compression="zstd", row_group_size=10_000)
-
-    # 8. Upload to S3
-    s3_key = f"{silver_prefix}/{local_filename}"
-    logger.info(f"Uploading to S3: s3://{BUCKET_SILVER}/{s3_key}")
-
-    df_transformed.sink_parquet(s3_key, compression="zstd", row_group_size=10_000)
-
-    # s3_hook.load_file(
-    #     filename=local_path, key=s3_key, bucket_name=BUCKET_SILVER, replace=True
-    # )
-
-    # # Cleanup
-    # os.remove(local_path)
+    # 5. Cleanup
+    if os.path.exists(local_path):
+        os.remove(local_path)
     logger.info("Done.")
 
 
 @dag(
     dag_id="silver_hh_processor",
-    description="Transforms Bronze JSONL to Silver Parquet (Batch Partitioned)",
+    description="Transforms Bronze JSONL to Silver Parquet (DuckDB Engine)",
     schedule="0 1 * * *",
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    tags=["silver", "hh", "etl", "polars"],
+    tags=["silver", "hh", "etl", "duckdb"],
 )
 def silver_dag():
     process_bronze_to_silver()

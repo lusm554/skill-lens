@@ -9,3 +9,4 @@ polars
 pyarrow
 s3fs           # Чтобы polars мог читать/писать в s3://
 adlfs          # Иногда нужен как зависимость fsspec
+duckdb
