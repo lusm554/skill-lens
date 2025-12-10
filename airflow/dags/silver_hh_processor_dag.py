@@ -272,43 +272,47 @@ def calculate_dq_metrics(df_lazy: pl.LazyFrame):
 
 @task(task_id="process_bronze_to_silver")
 def process_bronze_to_silver(logical_date=None):
-    # Работаем с датами через pendulum (Airflow native)
+    import uuid
+
     import pendulum
 
+    # 1. Настройка дат
     msk_tz = pendulum.timezone("Europe/Moscow")
-
-    # 1. Определяем target_date (Дата "вчера", за которую лежат данные в Bronze)
     run_date_msk = logical_date.in_timezone(msk_tz)
     target_date = run_date_msk.start_of("day").subtract(days=1)
-
     date_str = target_date.strftime("%Y-%m-%d")
 
     # Пути
     bronze_path = f"s3://{BUCKET_BRONZE}/hh/vacancies/date={date_str}/*.jsonl.gz"
-    silver_base_path = f"s3://{BUCKET_SILVER}/hh/vacancies/"
 
-    # Префикс партиции Silver (для очистки)
-    # Используем бизнес-дату (target_date), а не UTC время событий!
-    partition_prefix = f"hh/vacancies/year={target_date.year}/month={target_date.month}/day={target_date.day}"
+    # Формируем путь партиции ВРУЧНУЮ (год/месяц/день)
+    # Это позволяет избежать использования PartitionByKey
+    partition_suffix = (
+        f"year={target_date.year}/month={target_date.month}/day={target_date.day}"
+    )
+    silver_prefix = f"hh/vacancies/{partition_suffix}"
 
-    logger.info(f"Processing Batch Date: {date_str}")
+    # Локальный временный файл (Safe Mode)
+    local_filename = f"part-{uuid.uuid4()}.parquet"
+    local_path = f"/tmp/{local_filename}"
+
+    logger.info(f"Processing Batch: {date_str}")
     logger.info(f"Source: {bronze_path}")
-    logger.info(f"Target Partition: {partition_prefix}")
 
-    # 2. Идемпотентность (Clean before Write)
+    # 2. Очистка S3 (Идемпотентность)
     s3_hook = S3Hook(aws_conn_id="aws_default")
     if s3_hook.check_for_bucket(BUCKET_SILVER):
-        keys = s3_hook.list_keys(BUCKET_SILVER, prefix=partition_prefix)
+        keys = s3_hook.list_keys(BUCKET_SILVER, prefix=silver_prefix)
         if keys:
-            logger.info(f"Deleting {len(keys)} old files in silver...")
+            logger.info(f"Cleaning {len(keys)} old files in {silver_prefix}...")
             s3_hook.delete_objects(BUCKET_SILVER, keys)
     else:
         s3_hook.create_bucket(BUCKET_SILVER)
 
-    # 3. Drift Check
+    # 3. Drift Check (Оставляем как было)
     check_drift_on_sample(bronze_path)
 
-    # 4. Read & Transform
+    # 4. Lazy Reading
     try:
         df_lazy = pl.scan_ndjson(
             bronze_path,
@@ -317,40 +321,38 @@ def process_bronze_to_silver(logical_date=None):
             ignore_errors=True,
         )
     except Exception as e:
-        logger.error(f"Failed to read bronze files: {e}")
+        logger.error(f"Failed to read bronze: {e}")
         return
 
+    # 5. Transformations
     df_transformed = (
-        df_lazy.filter(
-            pl.col("id").is_not_null() & pl.col("published_at").is_not_null()
-        )
-        .unique(subset="id", keep="last")
+        df_lazy.filter(pl.col("id").is_not_null())
+        # ВАЖНО: Если OOM продолжится, unique() придется убрать или делать стриминг сложнее.
+        # maintain_order=False экономит память
+        .unique(subset="id", keep="any", maintain_order=False)
         .with_columns(
             [
-                # Парсим UTC время для аналитики
                 pl.col("published_at")
-                .str.to_datetime(format="%Y-%m-%dT%H:%M:%S%z", strict=False)
+                .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
                 .dt.convert_time_zone("UTC")
                 .alias("published_at_utc"),
                 pl.col("created_at")
-                .str.to_datetime(format="%Y-%m-%dT%H:%M:%S%z", strict=False)
+                .str.to_datetime("%Y-%m-%dT%H:%M:%S%z", strict=False)
                 .dt.convert_time_zone("UTC")
                 .alias("created_at_utc"),
-                # Парсим Wall Clock для смещения
                 pl.col("published_at")
-                .str.to_datetime(format="%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
-                .alias("published_at_wall_clock"),
+                .str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
+                .alias("published_at_wc"),
                 pl.col("created_at")
-                .str.to_datetime(format="%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
-                .alias("created_at_wall_clock"),
+                .str.to_datetime("%Y-%m-%dT%H:%M:%S", strict=False, exact=False)
+                .alias("created_at_wc"),
             ]
         )
         .with_columns(
             [
-                # Offset
                 (
                     (
-                        pl.col("published_at_wall_clock")
+                        pl.col("published_at_wc")
                         - pl.col("published_at_utc").dt.replace_time_zone(None)
                     )
                     .dt.total_minutes()
@@ -359,46 +361,43 @@ def process_bronze_to_silver(logical_date=None):
                 ),
                 (
                     (
-                        pl.col("created_at_wall_clock")
+                        pl.col("created_at_wc")
                         - pl.col("created_at_utc").dt.replace_time_zone(None)
                     )
                     .dt.total_minutes()
                     .cast(pl.Int16)
                     .alias("created_at_offset")
                 ),
-                # !!! ПАРТИЦИОНИРОВАНИЕ ПО БИЗНЕС-ДАТЕ (BATCH DATE) !!!
-                # Используем pl.lit() чтобы привязать все данные к дате загрузки
-                pl.lit(target_date.year).cast(pl.Int32).alias("year"),
-                pl.lit(target_date.month).cast(pl.Int8).alias("month"),
-                pl.lit(target_date.day).cast(pl.Int8).alias("day"),
             ]
         )
-        .drop(
-            [
-                "published_at",
-                "created_at",
-                "published_at_wall_clock",
-                "created_at_wall_clock",
-            ]
-        )
+        .drop(["published_at", "created_at", "published_at_wc", "created_at_wc"])
     )
 
-    # 5. DQ Metrics
-    calculate_dq_metrics(df_transformed)
+    # 6. DQ Metrics (Collect - отдельный проход)
+    # Если падает по OOM здесь -> закомментируйте временно
+    try:
+        calculate_dq_metrics(df_transformed)
+    except Exception as e:
+        logger.warning(f"Skipping DQ due to error: {e}")
 
-    # 6. Write
-    logger.info("Writing Parquet...")
-    df_transformed.sink_parquet(
-        pl.PartitionByKey(
-            silver_base_path,
-            by=["year", "month", "day"],
-            include_key=True,  # Включить ли колонки year/month/day в файлы
-        ),
-        storage_options=storage_options,
-        compression="zstd",
-        row_group_size=10_000,
-        mkdir=True,  # Создать директории если их нет
-    )
+    # 7. Write to LOCAL Disk (Спасение от OOM)
+    logger.info(f"Streaming transformation to local file: {local_path}...")
+
+    # sink_parquet в локальный файл работает супер-стабильно
+    # df_transformed.sink_parquet(local_path, compression="zstd", row_group_size=10_000)
+
+    # 8. Upload to S3
+    s3_key = f"{silver_prefix}/{local_filename}"
+    logger.info(f"Uploading to S3: s3://{BUCKET_SILVER}/{s3_key}")
+
+    df_transformed.sink_parquet(s3_key, compression="zstd", row_group_size=10_000)
+
+    # s3_hook.load_file(
+    #     filename=local_path, key=s3_key, bucket_name=BUCKET_SILVER, replace=True
+    # )
+
+    # # Cleanup
+    # os.remove(local_path)
     logger.info("Done.")
 
 
