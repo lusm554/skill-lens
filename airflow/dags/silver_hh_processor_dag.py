@@ -23,6 +23,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import duckdb
+from airflow.datasets import Dataset
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
@@ -34,6 +35,8 @@ SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 
 BUCKET_BRONZE = "bronze"
 BUCKET_SILVER = "silver"
+
+BRONZE_DATASET = Dataset("s3://bronze/hh/vacancies")
 
 logger = logging.getLogger("airflow.task")
 
@@ -106,8 +109,20 @@ def calculate_dq_metrics(con, table_name="silver_view"):
 
 
 @task(task_id="process_bronze_to_silver")
-def process_bronze_to_silver(logical_date=None):
+def process_bronze_to_silver(**context):
     import pendulum
+
+    triggering_asset_events = context["triggering_asset_events"]
+    first_event = list(triggering_asset_events.values())[0][0]
+    logger.info(first_event)
+    logical_date = first_event.source_dag_run.data_interval_start
+
+    # logical_date = dag_run.logical_date
+    logger.info(f"Context Logical Date: {logical_date} (Type: {type(logical_date)})")
+
+    logger.info(f"Context key {','.join(context.keys())}")
+
+    return
 
     # 1. Определяем target_date (Batch Date)
     msk_tz = pendulum.timezone("Europe/Moscow")
@@ -248,7 +263,8 @@ def process_bronze_to_silver(logical_date=None):
 @dag(
     dag_id="silver_hh_processor",
     description="Transforms Bronze JSONL to Silver Parquet (DuckDB Engine)",
-    schedule="0 1 * * *",
+    # schedule="0 1 * * *",
+    schedule=[BRONZE_DATASET],
     start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["silver", "hh", "etl", "duckdb"],

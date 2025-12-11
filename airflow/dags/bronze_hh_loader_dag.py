@@ -28,6 +28,7 @@ from typing import List, Optional, Tuple
 import aiohttp
 import pendulum
 from aiolimiter import AsyncLimiter
+from airflow.datasets import Dataset
 from airflow.models import Variable
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
@@ -40,6 +41,7 @@ API_URL = "https://api.hh.ru/vacancies"
 OAUTH_URL = "https://hh.ru/oauth/token"
 USER_AGENT = "Skill Lens/Airflow-Worker (bronze-loader-v3)"
 AIRFLOW_VAR_TOKEN_KEY = "HH_AUTH_TOKEN_INFO"
+BRONZE_DATASET = Dataset("s3://bronze/hh/vacancies")
 
 # Лимиты и настройки
 RATE_LIMIT = 10  # Запросов в секунду
@@ -602,7 +604,7 @@ class VacancyLoader:
 # --- AIRFLOW TASK ---
 
 
-@task(task_id="fetch_and_upload_batches")
+@task(task_id="fetch_and_upload_batches", outlets=[BRONZE_DATASET])
 def fetch_and_upload_batches(logical_date=None) -> None:
     if not CLIENT_ID or not CLIENT_SECRET:
         raise ValueError("Environment variables CLIENT_ID or CLIENT_SECRET missing")
