@@ -28,8 +28,8 @@ from typing import List, Optional, Tuple
 import aiohttp
 import pendulum
 from aiolimiter import AsyncLimiter
-from airflow.datasets import Dataset
 from airflow.models import Variable
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator  # <--- Импорт
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
 
@@ -41,7 +41,6 @@ API_URL = "https://api.hh.ru/vacancies"
 OAUTH_URL = "https://hh.ru/oauth/token"
 USER_AGENT = "Skill Lens/Airflow-Worker (bronze-loader-v3)"
 AIRFLOW_VAR_TOKEN_KEY = "HH_AUTH_TOKEN_INFO"
-BRONZE_DATASET = Dataset("s3://bronze/hh/vacancies")
 
 # Лимиты и настройки
 RATE_LIMIT = 10  # Запросов в секунду
@@ -604,7 +603,7 @@ class VacancyLoader:
 # --- AIRFLOW TASK ---
 
 
-@task(task_id="fetch_and_upload_batches", outlets=[BRONZE_DATASET])
+@task(task_id="fetch_and_upload_batches")
 def fetch_and_upload_batches(logical_date=None) -> None:
     if not CLIENT_ID or not CLIENT_SECRET:
         raise ValueError("Environment variables CLIENT_ID or CLIENT_SECRET missing")
@@ -653,7 +652,22 @@ def fetch_and_upload_batches(logical_date=None) -> None:
     tags=["bronze", "hh", "etl", "v3"],
 )
 def bronze_hh_loader_dag():
-    fetch_and_upload_batches()
+    loader_task = fetch_and_upload_batches()
+
+    # 2. Триггерим следующий DAG
+    trigger_silver = TriggerDagRunOperator(
+        task_id="trigger_silver_layer",
+        trigger_dag_id="silver_hh_processor",
+        # Самое важное: передаем ту же logical_date, что пришла нам
+        logical_date="{{ logical_date }}",
+        # Ждать завершения не нужно (Fire and Forget)
+        wait_for_completion=False,
+        # Если DAG уже был запущен с такой датой, сбрасываем его статус и перезапускаем
+        reset_dag_run=True,
+    )
+
+    # Связь
+    loader_task >> trigger_silver
 
 
 bronze_hh_loader_dag()
