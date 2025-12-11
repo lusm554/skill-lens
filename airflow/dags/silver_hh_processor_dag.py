@@ -251,6 +251,7 @@ def process_bronze_to_silver(logical_date=None):
     schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
+    max_active_runs=1,  # Защита от OOM, запускаем один DagRun в одно время
     tags=["silver", "hh", "etl", "duckdb"],
 )
 def silver_dag():

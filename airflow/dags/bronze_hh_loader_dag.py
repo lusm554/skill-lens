@@ -649,6 +649,7 @@ def fetch_and_upload_batches(logical_date=None) -> None:
     schedule="0 0 * * *",  # 00:00 UTC Daily
     start_date=datetime(2025, 1, 1),
     catchup=False,
+    max_active_runs=1,  # Защита от 4XX ошибок hh.ru, запускаем последовательно чтобы соблюдать лимит запросов
     tags=["bronze", "hh", "etl", "v3"],
 )
 def bronze_hh_loader_dag():
