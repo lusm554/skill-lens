@@ -41,6 +41,8 @@
 
 [2025 Dec 11 08:00] ETL потоки bronze и silver слоев готовы. На ежедневной основе собираются все доступные вакансии hh.ru T-1 и сохраняются в parquet zstd с партиционированием year-month-day. Нюансы/доработки: 1) Сейчас партиционирование по logical date airflow, нужно перевести на UTC hh.ru publish_date, тк hh.ru api бывает возвращает вакансии вне рамках запрашиваемой даты 2) Потоки запускаются независимо друг от друга, они как бы "не знают", что один зависит от другого, нужно добавить зависимость между потоками на уровне airflow 3) Расширить Data Quality Check на silver слое с проверкой появилась/пропала колонка, data drift, data null rate.
 
+[2025 Dec 11 14:00] Добавил тригер чтобы silver запускался от bronze с такой же logical date. Тригер работает через TriggerDagRunOperator. Пробовал Assets, он не предназначен, чтобы передавать logical date между DAG'ами. Также добавил max_active_runs=1() в silver bronze, чтобы не выходить за лимиты RAM, Disk, hh.ru API.
+
 ## DevOps, CI/CD
 
 [2025 Dec 3 13:40] Единый docker compose для airflow и minio, тк далее добавятся http сервер, ml сервис и тд.
