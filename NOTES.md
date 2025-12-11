@@ -37,6 +37,8 @@
 
 [2025 Dec 10 10:30] Для silver слоя лучше использовать OBT (One Big Table) c частичным flate'ом часто используемых полей. Это лучше подходит для Data Lake + parquet.
 
+[2025 Dec 10 14:10] Переписал silver dag с Polars на DuckDB. Polars работает отлично, но метод дедупликации lazy_df.unique собирает хеш таблицу в RAM, без возможности offload'a на диск. RAM не хватает. Зато DuckDB имеет возможность offload'a на диск и гибкие настройки потребления RAM. На DuckDB silver DAG выполняется 7 секунд для 300тыс jsonl строк с nested структурой. Это имба.
+
 ## DevOps, CI/CD
 
 [2025 Dec 3 13:40] Единый docker compose для airflow и minio, тк далее добавятся http сервер, ml сервис и тд.
