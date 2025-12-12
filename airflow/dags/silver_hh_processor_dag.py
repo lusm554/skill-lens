@@ -37,6 +37,74 @@ BUCKET_SILVER = "silver"
 
 logger = logging.getLogger("airflow.task")
 
+# --- SCHEMA DEFINITION (DuckDB Types) ---
+# Мы перевели Polars типы в SQL типы DuckDB.
+# STRUCT(...) - вложенная структура
+# TYPE[] - массив (LIST)
+# "from" в кавычках, т.к. это зарезервированное слово SQL
+TARGET_SCHEMA = {
+    "id": "VARCHAR",
+    "name": "VARCHAR",
+    "description": "VARCHAR",
+    "branded_description": "VARCHAR",
+    "key_skills": "STRUCT(name VARCHAR)[]",  # List of structs
+    "schedule": "STRUCT(id VARCHAR, name VARCHAR)",
+    "accept_handicapped": "BOOLEAN",
+    "accept_kids": "BOOLEAN",
+    "experience": "STRUCT(id VARCHAR, name VARCHAR)",
+    "address": "STRUCT(city VARCHAR, street VARCHAR, building VARCHAR, lat DOUBLE, lng DOUBLE, description VARCHAR, raw VARCHAR, metro STRUCT(station_name VARCHAR, line_name VARCHAR, station_id VARCHAR, line_id VARCHAR, lat DOUBLE, lng DOUBLE), metro_stations STRUCT(station_name VARCHAR, line_name VARCHAR, station_id VARCHAR, line_id VARCHAR, lat DOUBLE, lng DOUBLE)[], id VARCHAR)",
+    "employer": 'STRUCT(id VARCHAR, name VARCHAR, url VARCHAR, alternate_url VARCHAR, logo_urls STRUCT(original VARCHAR, "90" VARCHAR, "240" VARCHAR), vacancies_url VARCHAR, country_id BIGINT, accredited_it_employer BOOLEAN, trusted BOOLEAN)',
+    "salary": 'STRUCT("from" BIGINT, "to" BIGINT, currency VARCHAR, gross BOOLEAN)',
+    "archived": "BOOLEAN",
+    "response_url": "VARCHAR",
+    "specializations": "STRUCT(id VARCHAR, name VARCHAR, profarea_id VARCHAR, profarea_name VARCHAR)[]",
+    "professional_roles": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "driver_license_types": "STRUCT(id VARCHAR)[]",
+    "contacts": "STRUCT(name VARCHAR, email VARCHAR, phones STRUCT(country VARCHAR, city VARCHAR, number VARCHAR, comment VARCHAR)[])",
+    "created_at": "VARCHAR",  # Будет скастовано в timestamp позже
+    "published_at": "VARCHAR",
+    "response_letter_required": "BOOLEAN",
+    "type": "STRUCT(id VARCHAR, name VARCHAR)",
+    "has_test": "BOOLEAN",
+    "test": "STRUCT(required BOOLEAN)",
+    "alternate_url": "VARCHAR",
+    "working_days": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "working_time_intervals": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "working_time_modes": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "accept_temporary": "BOOLEAN",
+    "languages": "STRUCT(id VARCHAR, name VARCHAR, level STRUCT(id VARCHAR, name VARCHAR))[]",
+    # Проблемные колонки (теперь они жестко заданы)
+    "immediate_redirect_url": "VARCHAR",
+    "video_vacancy": "STRUCT(cover_picture STRUCT(resized_path VARCHAR, resized_width BIGINT, resized_height BIGINT), snippet_picture STRUCT(url VARCHAR), video STRUCT(upload_id VARCHAR, url VARCHAR), snippet_video STRUCT(upload_id VARCHAR, url VARCHAR), video_url VARCHAR, snippet_video_url VARCHAR, snippet_picture_url VARCHAR)",
+    "brand_snippet": 'STRUCT(logo VARCHAR, logo_xs VARCHAR, logo_scalable STRUCT("default" STRUCT(width BIGINT, height BIGINT, url VARCHAR), xs STRUCT(width BIGINT, height BIGINT, url VARCHAR)), picture VARCHAR, picture_xs VARCHAR, picture_scalable STRUCT("default" STRUCT(width BIGINT, height BIGINT, url VARCHAR), xs STRUCT(width BIGINT, height BIGINT, url VARCHAR)), background STRUCT(color VARCHAR, gradient STRUCT(angle DOUBLE, color_list STRUCT(color VARCHAR, position DOUBLE)[])))',
+    # Остальные поля для полноты (можно добавлять по мере необходимости)
+    "is_adv_vacancy": "BOOLEAN",
+    "internship": "BOOLEAN",
+    "department": "STRUCT(id VARCHAR, name VARCHAR)",
+    "show_contacts": "BOOLEAN",
+    "apply_alternate_url": "VARCHAR",
+    "work_format": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "relations": "VARCHAR[]",  # List of nulls usually
+    "accept_incomplete_resumes": "BOOLEAN",
+    "premium": "BOOLEAN",
+    "employment": "STRUCT(id VARCHAR, name VARCHAR)",
+    "employment_form": "STRUCT(id VARCHAR, name VARCHAR)",
+    "adv_context": "VARCHAR",
+    "sort_point_distance": "DOUBLE",
+    "branding": "STRUCT(type VARCHAR, tariff VARCHAR)",
+    "insider_interview": "STRUCT(id VARCHAR, url VARCHAR)",
+    "fly_in_fly_out_duration": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "url": "VARCHAR",
+    "salary_range": 'STRUCT("from" BIGINT, "to" BIGINT, currency VARCHAR, gross BOOLEAN, mode STRUCT(id VARCHAR, name VARCHAR), frequency STRUCT(id VARCHAR, name VARCHAR))',
+    "work_schedule_by_days": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "show_logo_in_search": "BOOLEAN",
+    "area": "STRUCT(id VARCHAR, name VARCHAR, url VARCHAR)",
+    "snippet": "STRUCT(requirement VARCHAR, responsibility VARCHAR)",
+    "night_shifts": "BOOLEAN",
+    "working_hours": "STRUCT(id VARCHAR, name VARCHAR)[]",
+    "adv_response_url": "VARCHAR",
+}
+
 
 # --- ФУНКЦИИ ---
 def setup_duckdb(db_path=":memory:", memory_limit="2GB"):
@@ -130,124 +198,101 @@ def process_bronze_to_silver(logical_date=None):
     logger.info(f"Processing Batch: {date_str}")
     logger.info(f"Source: {bronze_glob}")
 
-    # 2. Очистка S3 (Idempotency)
+    # Генерация строки колонок для DuckDB
+    # Формат: {'col1': 'TYPE', 'col2': 'TYPE'}
+    columns_definition = ", ".join([f"'{k}': '{v}'" for k, v in TARGET_SCHEMA.items()])
+    columns_sql = f"{{{columns_definition}}}"
+
+    # Очистка S3
     s3_hook = S3Hook(aws_conn_id="aws_default")
     if s3_hook.check_for_bucket(BUCKET_SILVER):
         keys = s3_hook.list_keys(BUCKET_SILVER, prefix=silver_prefix)
         if keys:
-            logger.info(f"Cleaning {len(keys)} old files in {silver_prefix}...")
+            logger.info(f"Cleaning {len(keys)} old files...")
             s3_hook.delete_objects(BUCKET_SILVER, keys)
     else:
         s3_hook.create_bucket(BUCKET_SILVER)
 
-    # 3. DuckDB Processing
     con = setup_duckdb()
 
     try:
-        # --- A. Drift Check ---
-        # Просто логируем, какие колонки мы нашли.
-        # Если в будущем захотим strict check, можно сравнить с эталонным списком.
-        detected_cols = get_bronze_schema_columns(con, bronze_glob)
-        logger.info(f"Detected {len(detected_cols)} columns in source files.")
+        logger.info("Executing DuckDB Transformation with Schema Enforcement...")
 
-        # --- B. Transformation Query ---
-        # Используем мощь DuckDB 1.x
-        logger.info("Executing DuckDB Transformation...")
-
-        # 1. Читаем JSON (read_json_auto очень быстр)
-        # 2. QUALIFY - дедупликация "на лету" без джойнов
-        # 3. EXCLUDE - убираем лишние колонки
-        # 4. Вычисляем смещения дат
-
+        # Основной запрос
+        # read_json(..., columns={...}) - это ключ к успеху.
+        # Он заставляет DuckDB искать конкретные поля. Если поля нет - ставит NULL.
+        # Лишние поля игнорируются.
         transform_query = f"""
         COPY (
             WITH raw_data AS (
                 SELECT *
-                FROM read_json_auto(
+                FROM read_json(
                     '{bronze_glob}',
+                    columns={columns_sql}, -- Явное указание схемы
+                    format='newline_delimited', -- Важно для NDJSON (JSONL)
                     ignore_errors=true,
-                    union_by_name=true,  -- Склеивает файлы даже если где-то нет полей
-                    filename=false       -- Не добавлять имя файла
+                    filename=false
                 )
             ),
             deduplicated AS (
                 SELECT *
                 FROM raw_data
                 WHERE id IS NOT NULL
-                -- Оставляем последнюю версию вакансии по дате публикации
                 QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY published_at DESC) = 1
             ),
             enriched AS (
                 SELECT
-                    -- Оставляем все поля, КРОМЕ сырых дат
                     * EXCLUDE (published_at, created_at),
-
-                    -- Конвертация дат в UTC (TIMESTAMPTZ -> UTC -> TIMESTAMP)
                     (published_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP as published_at_utc,
                     (created_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP as created_at_utc,
 
-                    -- Вычисляем Offset (разница между строкой и UTC временем)
-                    -- Попытка распарсить строку 'YYYY-MM-DDTHH:MM:SS+0300' как timestamp
-                    -- DuckDB date_diff('minute', start, end)
                     date_diff('minute',
                               (published_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
-                              published_at::TIMESTAMP -- Wall Clock Time
+                              published_at::TIMESTAMP
                     )::SMALLINT as published_at_offset,
 
                     date_diff('minute',
                               (created_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
                               created_at::TIMESTAMP
                     )::SMALLINT as created_at_offset
-
                 FROM deduplicated
             )
             SELECT * FROM enriched
         ) TO '{local_path}' (FORMAT 'PARQUET', COMPRESSION 'ZSTD', ROW_GROUP_SIZE 100000);
         """
 
-        # Запускаем монстра
         con.execute(transform_query)
-        logger.info(f"Transformation complete. File saved to {local_path}")
+        logger.info(f"Transformation complete. Saved to {local_path}")
 
-        # --- C. DQ Metrics (Optional) ---
-        # Считаем метрики уже по готовому Parquet файлу (это очень быстро)
-        # Создаем view поверх файла
+        # DQ check (опционально, на готовом файле)
         con.execute(
             f"CREATE OR REPLACE VIEW metrics_view AS SELECT * FROM parquet_scan('{local_path}')"
         )
         calculate_dq_metrics(con, "metrics_view")
 
     except Exception as e:
-        logger.error(f"DuckDB execution failed: {e}")
-        # Если упало, чистим и пробрасываем ошибку
+        logger.error(f"DuckDB failed: {e}")
         if os.path.exists(local_path):
             os.remove(local_path)
         raise e
     finally:
         con.close()
 
-    # 4. Upload to S3
-    # Проверяем, что файл не пустой
-    if os.path.getsize(local_path) < 100:
-        logger.warning("Resulting parquet file is empty or too small!")
-    else:
+    # Upload
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 100:
         s3_key = f"{silver_prefix}/{local_filename}"
-        logger.info(f"Uploading to S3: s3://{BUCKET_SILVER}/{s3_key}")
-
-        s3_hook.load_file(
-            filename=local_path, key=s3_key, bucket_name=BUCKET_SILVER, replace=True
-        )
-
-    # 5. Cleanup
-    if os.path.exists(local_path):
+        logger.info(f"Uploading to {s3_key}...")
+        s3_hook.load_file(local_path, s3_key, BUCKET_SILVER, replace=True)
         os.remove(local_path)
+    else:
+        logger.warning("File empty.")
+
     logger.info("Done.")
 
 
 @dag(
     dag_id="silver_hh_processor",
     description="Transforms Bronze JSONL to Silver Parquet (DuckDB Engine)",
-    # schedule="0 1 * * *",
     schedule=None,
     start_date=datetime(2025, 1, 1),
     catchup=False,
