@@ -111,6 +111,43 @@ def setup_duckdb(db_path=":memory:", memory_limit="2GB"):
     return con
 
 
+def check_schema_drift(con, s3_path_glob):
+    """
+    Проверяет, есть ли в файлах колонки, которых нет в TARGET_SCHEMA.
+    """
+    try:
+        # Читаем без схемы, чтобы DuckDB вывел все, что видит в JSON
+        # read_json_auto автоматически сэмплирует файл для определения схемы
+        query = f"DESCRIBE SELECT * FROM read_json_auto('{s3_path_glob}', ignore_errors=true, hive_partitioning=false) LIMIT 1"
+        schema_info = con.execute(query).fetchall()
+
+        # Колонки, которые есть в файле
+        file_cols = set([row[0] for row in schema_info])
+        # Колонки, которые мы ожидаем
+        expected_cols = set(TARGET_SCHEMA.keys())
+
+        # Новые колонки = В файле - Ожидаемые
+        new_cols = file_cols - expected_cols
+
+        if new_cols:
+            logger.warning(
+                f"⚠️ SCHEMA DRIFT DETECTED! Found new columns in source: {new_cols}"
+            )
+            # Пайплайн не роняем, так как в основной загрузке мы эти поля просто отбросим
+        else:
+            logger.info("✅ Schema Check Passed: No new columns detected.")
+
+        # Каких колонок НЕТ в файле (будут NULL)
+        missing_cols = expected_cols - file_cols
+        if missing_cols:
+            logger.info(
+                f"ℹ️ Missing columns in source (will be NULL): {len(missing_cols)} columns"
+            )
+
+    except Exception as e:
+        logger.warning(f"Could not perform drift check: {e}")
+
+
 def calculate_dq_metrics(con, table_name="silver_view"):
     """Считает метрики качества прямо внутри DuckDB."""
     try:
@@ -169,6 +206,9 @@ def process_bronze_to_silver(logical_date=None):
     con = setup_duckdb()
 
     try:
+        logger.info("Running Schema Drift Check...")
+        check_schema_drift(con, bronze_glob)
+
         logger.info("Executing DuckDB Transformation...")
 
         # SQL LOGIC:
@@ -187,7 +227,8 @@ def process_bronze_to_silver(logical_date=None):
                     columns={columns_sql},
                     format='newline_delimited',
                     ignore_errors=true,
-                    filename=false
+                    filename=false,
+                    hive_partitioning=false -- в пути есть поле date=YYYY-mm-dd, duckdb добавляет его как отдельную колонку
                 )
             ),
             deduplicated AS (
