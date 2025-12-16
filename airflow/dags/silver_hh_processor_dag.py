@@ -250,12 +250,12 @@ def process_bronze_to_silver(logical_date=None):
                     -- Логика: published_at (ISO String с оффсетом) - published_at_utc
                     date_diff('minute',
                         (published_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
-                        published_at::TIMESTAMPTZ::TIMESTAMP
+                        published_at::TIMESTAMP
                     )::SMALLINT as published_at_offset,
 
                     date_diff('minute',
                         (created_at::TIMESTAMPTZ AT TIME ZONE 'UTC')::TIMESTAMP,
-                        created_at::TIMESTAMPTZ::TIMESTAMP
+                        created_at::TIMESTAMP
                     )::SMALLINT as created_at_offset
                 FROM deduplicated
             )
