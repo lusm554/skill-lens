@@ -43,7 +43,65 @@
 
 [2025 Dec 11 14:00] Добавил тригер чтобы silver запускался от bronze с такой же logical date. Тригер работает через TriggerDagRunOperator. Пробовал Assets, он не предназначен, чтобы передавать logical date между DAG'ами. Также добавил max_active_runs=1() в silver bronze, чтобы не выходить за лимиты RAM, Disk, hh.ru API.
 
-[2025 Deec 17 06:30] Реализованы слои Bronze и Silver. Доступны вакансии hh.ru T-1 в parquet. Бывает, вакансии дублируются по id между днями, тк вакансия с одним id может публиковаться несколько раз. Возможно, это стоит добавить в bronze слой как признак, что вакансия публиковалась N раз.
+[2025 Dec 17 06:30] Реализованы слои Bronze и Silver. Доступны вакансии hh.ru T-1 в parquet. Бывает, вакансии дублируются по id между днями, тк вакансия с одним id может публиковаться несколько раз. Возможно, это стоит добавить в bronze слой как признак, что вакансия публиковалась N раз.
+
+[2025 Dec 17 12:00] Схема данных Silver слоя:
+| Колонка | Тип данных (из схемы) | Описание | Примечание |
+| :--- | :--- | :--- | :--- |
+| **id** | `VARCHAR` | Идентификатор вакансии | Required |
+| **name** | `VARCHAR` | Название | Required |
+| **schedule** | `STRUCT(id VARCHAR, "name" VARCHAR)` | График работы | **Deprecated**. Объект или null |
+| **working_time_modes** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список режимов времени работы | **Deprecated**. Массив объектов или null |
+| **working_time_intervals** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список с временными интервалами работы | **Deprecated**. Массив объектов или null |
+| **working_days** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список рабочих дней | **Deprecated**. Массив объектов или null |
+| **working_hours** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список вариантов рабочих часов в день | Массив объектов или null |
+| **work_schedule_by_days** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список графиков работы | Массив объектов или null |
+| **fly_in_fly_out_duration** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Варианты длительности вахты | Массив объектов или null |
+| **is_adv_vacancy** | `BOOLEAN` | — | Нет в описании |
+| **internship** | `BOOLEAN` | Стажировка | |
+| **accept_temporary** | `BOOLEAN` | Временное трудоустройство | Указание, что вакансия доступна с временным трудоустройством |
+| **accept_incomplete_resumes** | `BOOLEAN` | Неполное резюме | Разрешен ли отклик на вакансию неполным резюме. Required |
+| **premium** | `BOOLEAN` | Премиум-вакансия | Является ли данная вакансия премиум-вакансией |
+| **has_test** | `BOOLEAN` | Наличие теста | Информация о наличии прикрепленного тестового задания. Required |
+| **show_contacts** | `BOOLEAN` | Доступны ли контакты | |
+| **response_letter_required** | `BOOLEAN` | Сопроводительное письмо | Обязательно ли заполнять сообщение при отклике. Required |
+| **show_logo_in_search** | `BOOLEAN` | Отображать ли лого | Отображать ли лого для вакансии в поисковой выдаче |
+| **archived** | `BOOLEAN` | В архиве | Находится ли данная вакансия в архиве |
+| **night_shifts** | `BOOLEAN` | Ночные смены | |
+| **url** | `VARCHAR` | URL вакансии | Required |
+| **alternate_url** | `VARCHAR` | Ссылка на представление вакансии на сайте | Required |
+| **apply_alternate_url** | `VARCHAR` | Ссылка на отклик на вакансию на сайте | Required |
+| **response_url** | `VARCHAR` | URL отклика | Для прямых вакансий (type.id=direct) |
+| **adv_response_url** | `VARCHAR` | — | Нет в описании |
+| **immediate_redirect_url** | `VARCHAR` | — | Нет в описании |
+| **salary** | `STRUCT("from" BIGINT, "to" BIGINT, currency VARCHAR, gross BOOLEAN)` | Зарплата | **Deprecated**. Required |
+| **salary_range** | `STRUCT(...)` | Зарплата | Required. Расширенная структура с mode и frequency |
+| **employer** | `STRUCT(...)` | Информация о компании работодателя | Required. Содержит ссылки на логотипы, аккредитацию и др. |
+| **department** | `STRUCT(id VARCHAR, "name" VARCHAR)` | Департамент | Required. Может быть null-объектом |
+| **type** | `STRUCT(id VARCHAR, "name" VARCHAR)` | Тип вакансии | Required |
+| **employment** | `STRUCT(id VARCHAR, "name" VARCHAR)` | Тип занятости | **Deprecated** |
+| **employment_form** | `STRUCT(id VARCHAR, "name" VARCHAR)` | Тип занятости | |
+| **experience** | `STRUCT(id VARCHAR, "name" VARCHAR)` | Опыт работы | |
+| **area** | `STRUCT(id VARCHAR, "name" VARCHAR, url VARCHAR)` | Регион | Required |
+| **address** | `STRUCT(...)` | Адрес | В схеме включает в себя массив `metro_stations` (станции метро) |
+| **work_format** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список форматов работы | Массив объектов |
+| **relations** | `VARCHAR[]` | Связи соискателя с вакансией | Required. Enum: favorited, got_response и др. |
+| **professional_roles** | `STRUCT(id VARCHAR, "name" VARCHAR)[]` | Список профессиональных ролей | Required. Массив объектов |
+| **contacts** | `STRUCT(...)` | Контактная информация | Включает телефоны, email. Объект или null |
+| **adv_context** | `VARCHAR` | — | Нет в описании |
+| **sort_point_distance** | `DOUBLE` | Расстояние (в метрах) | Между центром сортировки и адресом вакансии |
+| **snippet** | `STRUCT(requirement VARCHAR, responsibility VARCHAR)` | Дополнительные текстовые отрывки | Required. Требования и обязанности |
+| **branding** | `STRUCT("type" VARCHAR, tariff VARCHAR)` | — | Нет в описании |
+| **insider_interview** | `STRUCT(id VARCHAR, url VARCHAR)` | Интервью о жизни в компании | Объект или null |
+| **video_vacancy** | `STRUCT(...)` | Видео вакансия | Содержит ссылки на видео, обложки и превью |
+| **brand_snippet** | `STRUCT(...)` | — | Нет в описании (брендинговые элементы: лого, фон) |
+| **published_at_utc** | `TIMESTAMP` | Дата и время публикации | В описании поле названо `published_at` (Required) |
+| **created_at_utc** | `TIMESTAMP` | Дата и время создания | В описании поле названо `created_at` |
+| **published_at_offset** | `SMALLINT` | — | Техническое поле (смещение часового пояса), нет в описании |
+| **created_at_offset** | `SMALLINT` | — | Техническое поле (смещение часового пояса), нет в описании |
+| **day** | `BIGINT` | — | Техническое поле партицирования, нет в описании |
+| **month** | `BIGINT` | — | Техническое поле партицирования, нет в описании |
+| **year** | `BIGINT` | — | Техническое поле партицирования, нет в описании |
 
 ## DevOps, CI/CD
 
