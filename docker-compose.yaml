@@ -31,6 +31,9 @@ x-airflow-common: &airflow-common
     AWS_SECRET_ACCESS_KEY: minioadmin
     AWS_ENDPOINT_URL: http://minio:9000
     AWS_DEFAULT_REGION: us-east-1
+    # MLflow Settings for Airflow
+    MLFLOW_TRACKING_URI: "http://mlflow:5000"
+    MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
 
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
@@ -85,8 +88,36 @@ services:
       /usr/bin/mc mb myminio/bronze || true;
       /usr/bin/mc mb myminio/silver || true;
       /usr/bin/mc mb myminio/gold || true;
+      /usr/bin/mc mb myminio/mlflow || true;
       exit 0;
       "
+
+  # --- MLFLOW SERVICE ---
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.7.0
+    container_name: skill-lens-mlflow
+    ports:
+      - "5001:5000"
+    environment:
+      # Настройки доступа к S3 (MinIO)
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///data/mlflow.db
+      --default-artifact-root s3://mlflow/
+      --host 0.0.0.0
+      --port 5000
+    volumes:
+      - mlflow_data:/data
+    restart: always
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-create-buckets:
+        condition: service_completed_successfully
 
   # --- STANDARD AIRFLOW SERVICES ---
   postgres:
@@ -337,3 +368,4 @@ services:
 volumes:
   postgres-db-volume:
   minio_data:
+  mlflow_data:
