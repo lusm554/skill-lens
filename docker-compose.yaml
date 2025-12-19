@@ -94,7 +94,10 @@ services:
 
   # --- MLFLOW SERVICE ---
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.7.0
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    image: skill-lens-mlflow:custom
     container_name: skill-lens-mlflow
     ports:
       - "5001:5000"
@@ -104,6 +107,7 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
       AWS_DEFAULT_REGION: us-east-1
+      MLFLOW_S3_IGNORE_TLS: "true"
     command: >
       mlflow server
       --backend-store-uri sqlite:///data/mlflow.db
